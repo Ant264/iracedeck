@@ -72,6 +72,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     startRole: vi.fn().mockResolvedValue(true),
     stopRole: vi.fn().mockResolvedValue(true),
   })),
+  setSelectedCar: vi.fn(),
+  getSelectedCar: vi.fn(() => null),
+  onSelectedCarChange: vi.fn(() => vi.fn()),
   getGlobalTitleSettings: vi.fn(() => ({})),
   resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
@@ -180,6 +183,31 @@ describe("SplitsDeltaCycle", () => {
 
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("ref-car");
+    });
+
+    it("should show the selected target car for select-reference-car mode", () => {
+      const result = generateSplitsDeltaCycleSvg(
+        { mode: "select-reference-car", direction: "next", carIdx: 5 },
+        false,
+        "42",
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(result).toContain("data:image/svg+xml");
+      expect(decoded).toContain("42");
+      expect(decoded).toContain("TARGET");
+    });
+
+    it("should show TARGET CAR for select-reference-car mode when no car resolved", () => {
+      const result = generateSplitsDeltaCycleSvg(
+        { mode: "select-reference-car", direction: "next", carIdx: 5 },
+        false,
+        null,
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(result).toContain("data:image/svg+xml");
+      expect(decoded).toContain("TARGET");
     });
 
     it("should include REFERENCE and CAR labels for toggle-ref-car mode", () => {
