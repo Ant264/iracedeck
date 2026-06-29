@@ -28,6 +28,7 @@ import customSectorStartIconSvg from "@iracedeck/icons/splits-delta-cycle/custom
 import displayRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/display-ref-car.svg";
 import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
 import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
+import selectRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/select-ref-car.svg";
 import { type ActiveSessionCar, getActiveSessionCars, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -41,7 +42,6 @@ const MODE_ICONS: Record<string, string> = {
   "custom-sector-end": customSectorEndIconSvg,
   "active-reset-set": activeResetSetIconSvg,
   "active-reset-run": activeResetRunIconSvg,
-  "select-reference-car": displayRefCarIconSvg,
 };
 
 const MODE_TITLES: Record<string, string> = {
@@ -75,6 +75,11 @@ const SplitsDeltaCycleSettings = CommonSettings.extend({
    * select-reference-car buttons. "none" disables the accent.
    */
   colorSource: z.enum(["none", "carDesign", "carClass", "license"]).default("none"),
+  /**
+   * Which driver name field to show on select-reference-car buttons.
+   * "none" shows only the car number.
+   */
+  nameSource: z.enum(["none", "smartName", "initials"]).default("none"),
 });
 
 type SplitsDeltaCycleSettings = z.infer<typeof SplitsDeltaCycleSettings>;
@@ -125,6 +130,153 @@ export function resolveCarAccentColor(colorSource: string, car: ActiveSessionCar
 }
 
 /**
+ * Extract a short surname from a driver's full name (max 5 chars, uppercase).
+ * Prefers the last word (surname). Returns `undefined` for blank/missing input.
+ *
+ * @internal Exported for testing
+ */
+export function getShortDriverName(driverName?: string): string | undefined {
+  if (!driverName) return undefined;
+
+  const trimmed = driverName.trim();
+
+  if (!trimmed) return undefined;
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const lastName = words[words.length - 1];
+
+  if (!lastName) return undefined;
+
+  const cleaned = lastName.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, "");
+
+  if (!cleaned) return undefined;
+
+  return cleaned.substring(0, 5).toUpperCase();
+}
+
+/**
+ * Derive a robust short label from a full driver name, accounting for league
+ * suffix patterns like "Hammer A" where the trailing single letter is not
+ * useful for on-button identification.
+ *
+ * @internal Exported for testing
+ */
+export function getSmartDriverNameLabel(driverName?: string): string | undefined {
+  if (!driverName) return undefined;
+
+  const trimmed = driverName.trim();
+
+  if (!trimmed) return undefined;
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+
+  if (words.length === 0) return undefined;
+
+  const maybeSuffix = words[words.length - 1];
+  const hasSingleLetterSuffix = words.length > 1 && /^[A-Za-z]$/.test(maybeSuffix);
+  const cleanedWords = hasSingleLetterSuffix ? words.slice(0, -1) : words;
+
+  if (cleanedWords.length === 0) return undefined;
+
+  const preferredIndex = cleanedWords.length - 1;
+  let preferred = cleanedWords[preferredIndex] ?? "";
+
+  // Preserve split surname prefixes.
+  // Handles three cases:
+  //   "D' Avoine"  → D' (letter + apostrophe already present) → "D'Avoine"
+  //   "D'Avoine"   → treated as a single word, no action needed
+  //   "D Avoine"   → D (standalone letter, apostrophe lost in storage) → "D'Avoine" (vowel elision)
+  //   "D Martinez" → D (standalone letter, consonant) → "DMartinez"
+  if (preferredIndex > 0) {
+    const maybePrefixRaw = cleanedWords[preferredIndex - 1] ?? "";
+    const maybePrefix = maybePrefixRaw.replace(/^[^a-zA-Z0-9]+/g, "");
+
+    if (/^[A-Za-z]['\u2019]$/.test(maybePrefix)) {
+      // letter + existing apostrophe: D' + Avoine = D'Avoine
+      preferred = `${maybePrefix}${preferred}`;
+    } else if (/^[A-Za-z]$/.test(maybePrefix)) {
+      // Standalone single letter: reconstruct elision apostrophe for vowel-starting
+      // surnames (French convention: D + Avoine = D'Avoine) or plain concat otherwise.
+      const elision = /^[aeiouAEIOU]/.test(preferred);
+      preferred = elision ? `${maybePrefix}'${preferred}` : `${maybePrefix}${preferred}`;
+    }
+  }
+
+  const cleaned = preferred.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, "");
+
+  if (!cleaned) return undefined;
+
+  return cleaned.substring(0, 16).toUpperCase();
+}
+
+/**
+ * Extract surname-like token from iRacing AbbrevName values like
+ * "D'Avoine, N." or "Smith, J".
+ */
+function getSmartLabelFromAbbrevName(abbrevName?: string): string | undefined {
+  if (!abbrevName) return undefined;
+
+  const trimmed = abbrevName.trim();
+
+  if (!trimmed) return undefined;
+
+  const surnamePart = trimmed.split(",")[0]?.trim();
+
+  if (!surnamePart) return undefined;
+
+  return getSmartDriverNameLabel(surnamePart);
+}
+
+/**
+ * Resolve the short name label to display on a `select-reference-car` button
+ * based on the user's chosen name source and the car's session data.
+ *
+ * - `"none"` always returns `undefined`.
+ * - `"userName"` and `"teamName"` apply {@link getShortDriverName} (last-word, max 5 chars, uppercase).
+ * - `"abbrevName"` and `"initials"` use the raw field trimmed and uppercased, truncated to 5 chars.
+ * - Returns `undefined` when the field is absent, empty, or produces no useful text.
+ *
+ * @internal Exported for testing
+ */
+export function resolveCarNameLabel(nameSource: string, car: ActiveSessionCar | undefined): string | undefined {
+  if (nameSource === "none" || !car) return undefined;
+
+  switch (nameSource) {
+    case "smartName": {
+      const userNameLabel = getSmartDriverNameLabel(car.userName);
+      const driverNameLabel = getSmartDriverNameLabel(car.driverName);
+      const abbrevNameLabel = getSmartLabelFromAbbrevName(car.abbrevName);
+
+      const candidates = [userNameLabel, driverNameLabel, abbrevNameLabel].filter((value): value is string => !!value);
+
+      if (candidates.length === 0) return undefined;
+
+      if (candidates.length === 1) return candidates[0];
+
+      // Prefer labels that preserve punctuation/prefixes (for example
+      // "D'AVOINE" over "AVOINE"), then fall back to length.
+      candidates.sort((a, b) => {
+        const punctuationScore = (value: string) => (/[''-]/.test(value) ? 1 : 0);
+        const punctDiff = punctuationScore(b) - punctuationScore(a);
+
+        if (punctDiff !== 0) return punctDiff;
+
+        return b.length - a.length;
+      });
+
+      return candidates[0];
+    }
+    case "initials": {
+      const trimmed = car.initials?.trim();
+
+      return trimmed ? trimmed.toUpperCase().substring(0, 5) : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
  * @internal Exported for testing
  */
 export function generateSplitsDeltaCycleSvg(
@@ -134,6 +286,7 @@ export function generateSplitsDeltaCycleSvg(
   isSelected = false,
   isOffline = false,
   accentColor?: string,
+  car?: ActiveSessionCar,
 ): string {
   const { mode, direction } = settings;
 
@@ -155,22 +308,70 @@ export function generateSplitsDeltaCycleSvg(
   }
 
   if (mode === "select-reference-car") {
-    const baseColors = resolveIconColors(displayRefCarIconSvg, getGlobalColors(), settings.colorOverrides);
+    const baseColors = resolveIconColors(selectRefCarIconSvg, getGlobalColors(), settings.colorOverrides);
     // Dim the background when the driver is offline/disconnected so the user
     // knows the slot is occupied but unavailable.
     const colors = isOffline ? { ...baseColors, backgroundColor: "#333333" } : baseColors;
-    const defaultTitle = resolvedCarNumber?.trim() ? `#${resolvedCarNumber.trim()}` : "—";
-    const title = resolveTitleSettings(
-      displayRefCarIconSvg,
-      getGlobalTitleSettings(),
-      settings.titleOverrides,
-      defaultTitle,
-    );
+
+    // Build text lines for custom graphic layout: optional name line(s) above a
+    // larger anchored car-number line.
+    const label = resolveCarNameLabel(settings.nameSource, car);
+    const hasCarNumber = resolvedCarNumber?.trim();
+    const topLine = hasCarNumber ? label : undefined;
+    const bottomLine = hasCarNumber ? `#${hasCarNumber}` : "—";
+
+    // Text-only graphic layout for select-reference-car.
+    // - Name area in top/middle (supports up to 2 lines)
+    // - Number anchored at bottom in larger type for quick scanning
+    const escapeText = (value: string): string =>
+      value.replace(
+        /[&<>"']/g,
+        (c) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[c] ?? c,
+      );
+    const escapedBottom = escapeText(bottomLine);
+
+    const nameLines = (() => {
+      if (!topLine) return [] as string[];
+
+      // Keep short names on one line; split longer labels into two compact
+      // chunks to create breathing room above the anchored car number.
+      if (topLine.length <= 8) return [escapeText(topLine)];
+
+      const splitIndex = Math.ceil(topLine.length / 2);
+
+      return [escapeText(topLine.slice(0, splitIndex)), escapeText(topLine.slice(splitIndex))];
+    })();
+
+    const topText =
+      nameLines.length === 0
+        ? ""
+        : nameLines.length === 1
+          ? `<text x="72" y="62" text-anchor="middle" fill="{{textColor}}" font-size="24" font-family="Arial" font-weight="700">${nameLines[0]}</text>`
+          : `<text x="72" y="48" text-anchor="middle" fill="{{textColor}}" font-size="20" font-family="Arial" font-weight="700">${nameLines[0]}</text><text x="72" y="72" text-anchor="middle" fill="{{textColor}}" font-size="20" font-family="Arial" font-weight="700">${nameLines[1]}</text>`;
+
+    const selectRefTextGraphic = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">${topText}<text x="72" y="130" text-anchor="middle" fill="{{textColor}}" font-size="51" font-family="Arial" font-weight="800">${escapedBottom}</text></svg>`;
+
+    const title = {
+      showTitle: false,
+      showGraphics: true,
+      titleText: "",
+      bold: true,
+      fontSize: 18,
+      position: "bottom" as const,
+      customPosition: 0,
+    };
 
     // Green border forced on when this button is the active selected target
     const stateColor = isSelected ? "#2ecc71" : undefined;
     const resolvedBorder = resolveBorderSettings(
-      displayRefCarIconSvg,
+      selectRefCarIconSvg,
       getGlobalBorderSettings(),
       settings.borderOverrides,
       stateColor,
@@ -180,7 +381,7 @@ export function generateSplitsDeltaCycleSvg(
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
     return assembleIcon({
-      graphicSvg: displayRefCarIconSvg,
+      graphicSvg: selectRefTextGraphic,
       colors,
       title,
       border,
@@ -282,7 +483,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
       const car = this.sessionCarList[currentSettings.slotIndex];
       const accentColor = resolveCarAccentColor(currentSettings.colorSource, car);
-      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected, isOffline, accentColor);
+      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected, isOffline, accentColor, car);
       void this.updateKeyImage(ev.action.id, svg);
     });
     this.selectedCarUnsubscribers.set(ev.action.id, unsubscribe);
@@ -412,10 +613,8 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         ? resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx
         : false;
     const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
-    const accentColor = resolveCarAccentColor(
-      settings.colorSource,
-      settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined,
-    );
+    const car = settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined;
+    const accentColor = resolveCarAccentColor(settings.colorSource, car);
     const svgDataUri = generateSplitsDeltaCycleSvg(
       settings,
       this.isBindingMissing(this.resolveSettingKey(settings)),
@@ -423,6 +622,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       isSelected,
       isOffline,
       accentColor,
+      car,
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -434,10 +634,8 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
           ? currentResolvedCarIdx !== null && getSelectedCar()?.carIdx === currentResolvedCarIdx
           : false;
       const currentIsOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
-      const currentAccentColor = resolveCarAccentColor(
-        settings.colorSource,
-        settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined,
-      );
+      const currentCar = settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined;
+      const currentAccentColor = resolveCarAccentColor(settings.colorSource, currentCar);
 
       return generateSplitsDeltaCycleSvg(
         settings,
@@ -446,6 +644,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         currentIsSelected,
         currentIsOffline,
         currentAccentColor,
+        currentCar,
       );
     });
   }
@@ -531,6 +730,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       isSelected,
       isOffline,
       accentColor,
+      car ?? undefined,
     );
     void this.updateKeyImage(contextId, svg);
   }

@@ -278,9 +278,9 @@ describe("getActiveSessionCars", () => {
       },
     };
     expect(getActiveSessionCars(sessionInfo)).toEqual([
-      { carIdx: 2, carNumber: "4", carNumberRaw: 4, driverName: "Bob", carClass: "GT4" },
-      { carIdx: 4, carNumber: "7", carNumberRaw: 7, driverName: "Carol", carClass: "GT3" },
-      { carIdx: 0, carNumber: "99", carNumberRaw: 99, driverName: "Alice", carClass: "GT3" },
+      { carIdx: 2, carNumber: "4", carNumberRaw: 4, driverName: "Bob", userName: "Bob", carClass: "GT4" },
+      { carIdx: 4, carNumber: "7", carNumberRaw: 7, driverName: "Carol", userName: "Carol", carClass: "GT3" },
+      { carIdx: 0, carNumber: "99", carNumberRaw: 99, driverName: "Alice", userName: "Alice", carClass: "GT3" },
     ]);
   });
 

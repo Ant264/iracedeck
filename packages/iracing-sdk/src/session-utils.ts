@@ -12,6 +12,9 @@ interface DriverEntry {
   CarIsPaceCar?: number;
   IsSpectator?: number;
   UserName?: string;
+  AbbrevName?: string;
+  Initials?: string;
+  TeamName?: string;
   CarClassShortName?: string;
   CarDesignStr?: string;
   CarClassColor?: unknown;
@@ -29,8 +32,16 @@ export interface ActiveSessionCar {
   carNumber: string;
   /** Raw car number used by the iRacing camera API (e.g. 3042). */
   carNumberRaw: number;
-  /** Driver display name. Empty string when not available. */
+  /** Driver display name (from UserName). Empty string when not available. */
   driverName: string;
+  /** Raw UserName field. `undefined` when not present in session data. */
+  userName?: string;
+  /** Abbreviated driver name (from AbbrevName, e.g. "Smith, J."). `undefined` when not present. */
+  abbrevName?: string;
+  /** Driver initials (from Initials, e.g. "JS"). `undefined` when not present. */
+  initials?: string;
+  /** Team name (from TeamName). `undefined` when not present. */
+  teamName?: string;
   /** Car class short name (e.g. "GT3"). Empty string when not available. */
   carClass: string;
   /** Raw CarDesignStr from session info (e.g. "1,ffffff,ff0000,000000"). */
@@ -83,6 +94,10 @@ export function getActiveSessionCars(sessionInfo: unknown): ActiveSessionCar[] {
       carNumber,
       carNumberRaw: driver.CarNumberRaw,
       driverName: driver.UserName ?? "",
+      userName: driver.UserName || undefined,
+      abbrevName: driver.AbbrevName || undefined,
+      initials: driver.Initials || undefined,
+      teamName: driver.TeamName || undefined,
       carClass: driver.CarClassShortName ?? "",
       carDesignStr,
       designColor: parseCarDesignColor(carDesignStr),

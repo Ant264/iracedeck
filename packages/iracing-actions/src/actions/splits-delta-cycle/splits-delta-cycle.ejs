@@ -41,6 +41,14 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="name-source-item" label="Name Label" class="hidden">
+			<sdpi-select setting="nameSource" default="none">
+				<option value="none">None (number only)</option>
+				<option value="smartName">Name</option>
+				<option value="initials">Initials</option>
+			</sdpi-select>
+		</sdpi-item>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['splits-delta-cycle'] }) %>
@@ -103,18 +111,22 @@
 				const directionItem = document.getElementById("direction-item");
 				const slotIndexItem = document.getElementById("slot-index-item");
 				const colorSourceItem = document.getElementById("color-source-item");
+				const nameSourceItem = document.getElementById("name-source-item");
 				if (mode === "cycle") {
 					directionItem?.classList.remove("hidden");
 					slotIndexItem?.classList.add("hidden");
 					colorSourceItem?.classList.add("hidden");
+					nameSourceItem?.classList.add("hidden");
 				} else if (mode === "select-reference-car") {
 					directionItem?.classList.add("hidden");
 					slotIndexItem?.classList.remove("hidden");
 					colorSourceItem?.classList.remove("hidden");
+					nameSourceItem?.classList.remove("hidden");
 				} else {
 					directionItem?.classList.add("hidden");
 					slotIndexItem?.classList.add("hidden");
 					colorSourceItem?.classList.add("hidden");
+					nameSourceItem?.classList.add("hidden");
 				}
 			}
 

@@ -1,7 +1,14 @@
 import { assembleIcon } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES, resolveCarAccentColor } from "./splits-delta-cycle.js";
+import {
+  generateSplitsDeltaCycleSvg,
+  getShortDriverName,
+  getSmartDriverNameLabel,
+  GLOBAL_KEY_NAMES,
+  resolveCarAccentColor,
+  resolveCarNameLabel,
+} from "./splits-delta-cycle.js";
 
 vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -23,6 +30,9 @@ vi.mock("@iracedeck/icons/splits-delta-cycle/active-reset-set.svg", () => ({
 }));
 vi.mock("@iracedeck/icons/splits-delta-cycle/active-reset-run.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg" class="active-reset-run">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/splits-delta-cycle/select-ref-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg" class="select-ref-car"></svg>',
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -420,4 +430,435 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
     const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
     expect(call?.accentColor).toBeUndefined();
   });
+});
+
+// ---------------------------------------------------------------------------
+// getShortDriverName
+// ---------------------------------------------------------------------------
+
+describe("getShortDriverName", () => {
+  it("extracts and uppercases the last word up to 5 chars", () => {
+    expect(getShortDriverName("Anthony Cuthbertson")).toBe("CUTHB");
+    expect(getShortDriverName("John Smith")).toBe("SMITH");
+    expect(getShortDriverName("Max Verstappen")).toBe("VERST");
+  });
+
+  it("handles a single-word name", () => {
+    expect(getShortDriverName("Bob")).toBe("BOB");
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(getShortDriverName(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined for empty string", () => {
+    expect(getShortDriverName("")).toBeUndefined();
+  });
+
+  it("returns undefined for whitespace-only string", () => {
+    expect(getShortDriverName("   ")).toBeUndefined();
+  });
+
+  it("trims leading/trailing whitespace before processing", () => {
+    expect(getShortDriverName("  John Smith  ")).toBe("SMITH");
+  });
+
+  it("returns names shorter than 5 chars without padding", () => {
+    expect(getShortDriverName("Li Wei")).toBe("WEI");
+  });
+
+  it("returns exactly 5 chars when surname is 5 chars", () => {
+    expect(getShortDriverName("John Smith")).toBe("SMITH");
+  });
+
+  it("strips leading and trailing punctuation from the surname", () => {
+    // Surname with trailing period (e.g. abbreviation)
+    expect(getShortDriverName("John Jr.")).toBe("JR");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getSmartDriverNameLabel
+// ---------------------------------------------------------------------------
+
+describe("getSmartDriverNameLabel", () => {
+  it("removes trailing class suffix and returns surname-like token", () => {
+    expect(getSmartDriverNameLabel("Hammer A")).toBe("HAMMER");
+    expect(getSmartDriverNameLabel("Smith B")).toBe("SMITH");
+    expect(getSmartDriverNameLabel("John Smith A")).toBe("SMITH");
+  });
+
+  it("preserves apostrophe surname prefixes", () => {
+    expect(getSmartDriverNameLabel("Nicholas D'Avoine")).toBe("D'AVOINE");
+    expect(getSmartDriverNameLabel("Nicholas D' Avoine")).toBe("D'AVOINE");
+    expect(getSmartDriverNameLabel("Nicholas D' Avoine A")).toBe("D'AVOINE");
+  });
+
+  it("reconstructs elision apostrophe when D is stored as standalone word", () => {
+    // iRacing may store the name with the apostrophe lost: "Nicolas D Avoine"
+    expect(getSmartDriverNameLabel("Nicolas D Avoine")).toBe("D'AVOINE");
+    expect(getSmartDriverNameLabel("Nicolas D Avoine A")).toBe("D'AVOINE");
+  });
+
+  it("concatenates single-letter prefix without apostrophe for consonant surnames", () => {
+    expect(getSmartDriverNameLabel("Nicolas D Smith")).toBe("DSMITH");
+  });
+
+  it("handles regular names", () => {
+    expect(getSmartDriverNameLabel("Max Verstappen")).toBe("VERSTAPPEN");
+    expect(getSmartDriverNameLabel("Bob")).toBe("BOB");
+  });
+
+  it("returns undefined for missing or blank values", () => {
+    expect(getSmartDriverNameLabel(undefined)).toBeUndefined();
+    expect(getSmartDriverNameLabel("")).toBeUndefined();
+    expect(getSmartDriverNameLabel("   ")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCarNameLabel
+// ---------------------------------------------------------------------------
+
+describe("resolveCarNameLabel", () => {
+  const baseCar = {
+    carIdx: 0,
+    carNumber: "42",
+    carNumberRaw: 42,
+    driverName: "John Smith",
+    carClass: "",
+    userName: "John Smith",
+    initials: "JS",
+  };
+
+  it("returns undefined for nameSource 'none'", () => {
+    expect(resolveCarNameLabel("none", baseCar)).toBeUndefined();
+  });
+
+  it("returns undefined when car is undefined, regardless of nameSource", () => {
+    expect(resolveCarNameLabel("smartName", undefined)).toBeUndefined();
+    expect(resolveCarNameLabel("initials", undefined)).toBeUndefined();
+  });
+
+  it("returns smartName with class-suffix cleanup", () => {
+    const car = { ...baseCar, userName: "Hammer A", driverName: "Hammer A" };
+    expect(resolveCarNameLabel("smartName", car)).toBe("HAMMER");
+  });
+
+  it("prefers the richer smartName label when fields differ", () => {
+    const car = { ...baseCar, userName: "Nicholas Avoine", driverName: "Nicholas D'Avoine" };
+    expect(resolveCarNameLabel("smartName", car)).toBe("D'AVOINE");
+  });
+
+  it("uses abbrevName to preserve surname prefix when full names are flattened", () => {
+    const car = {
+      ...baseCar,
+      userName: "Nicholas Avoine",
+      driverName: "Nicholas Avoine",
+      abbrevName: "D'Avoine, N.",
+    };
+    expect(resolveCarNameLabel("smartName", car)).toBe("D'AVOINE");
+  });
+
+  it("returns initials trimmed and uppercased, max 5 chars", () => {
+    expect(resolveCarNameLabel("initials", baseCar)).toBe("JS");
+  });
+
+  it("returns undefined for smartName when userName and driverName are empty", () => {
+    expect(resolveCarNameLabel("smartName", { ...baseCar, driverName: "", userName: "" })).toBeUndefined();
+  });
+
+  it("returns undefined for initials when field is empty", () => {
+    const car = { ...baseCar, initials: "" };
+    expect(resolveCarNameLabel("initials", car)).toBeUndefined();
+  });
+
+  it("returns undefined for unknown nameSource", () => {
+    expect(resolveCarNameLabel("unknown", baseCar)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateSplitsDeltaCycleSvg — select-reference-car driver name
+// ---------------------------------------------------------------------------
+
+describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
+  const smithCar = {
+    carIdx: 0,
+    carNumber: "42",
+    carNumberRaw: 42,
+    driverName: "John Smith",
+    carClass: "",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders text-only graphic for select-reference-car mode", () => {
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain('text-anchor="middle"');
+    expect(decoded).not.toContain("ref-car");
+  });
+  it("uses smartName cleanup for class-suffixed names", () => {
+    const car = { ...smithCar, userName: "Hammer A", driverName: "Hammer A" };
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      car,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("HAMMER");
+    expect(decoded).toContain("#42");
+  });
+
+  it("does not render REF text for select-reference-car mode", () => {
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      smithCar,
+    );
+    const decoded = decodeURIComponent(result);
+
+    // The old display-ref-car.svg embedded a hardcoded "REF" label in the
+    // graphic artwork; select-ref-car.svg has no graphic elements at all.
+    expect(decoded).not.toContain(">REF<");
+  });
+
+  it("shows shortened smart name and car number when nameSource is smartName", () => {
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      smithCar,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("SMITH");
+    expect(decoded).toContain("#42");
+  });
+
+  it("renders apostrophe names correctly for smartName", () => {
+    const car = { ...smithCar, userName: "Nicholas D'Avoine", driverName: "Nicholas D'Avoine" };
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      car,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("D&#39;AVOINE");
+    expect(decoded).toContain("#42");
+  });
+
+  it("shows initials when nameSource is initials", () => {
+    const car = { ...smithCar, initials: "JS" };
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "initials" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      car,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("JS");
+    expect(decoded).toContain("#42");
+  });
+
+  it("shows car number only when nameSource is none", () => {
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "none" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      smithCar,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("#42");
+    expect(decoded).not.toContain("SMITH");
+  });
+
+  it("falls back to car number only when selected name field is missing", () => {
+    // initials not set on car — should degrade to number-only
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "initials" },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      smithCar, // no abbrevName field
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("#42");
+    expect(decoded).not.toContain("SMITH");
+  });
+
+  it("shows em-dash for empty slot regardless of name source", () => {
+    const result = generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      null,
+      false,
+      false,
+      undefined,
+      smithCar,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain("—");
+    expect(decoded).not.toContain("SMITH");
+  });
+
+  it("uses two-line name area for longer labels while keeping number anchored", () => {
+    const car = { ...smithCar, userName: "Max Verstappen", driverName: "Max Verstappen" };
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "1",
+      false,
+      false,
+      undefined,
+      car,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { graphicSvg?: string } | undefined;
+    expect(call?.graphicSvg).toContain("VERST");
+    expect(call?.graphicSvg).toContain("APPEN");
+    expect(call?.graphicSvg).toContain("#1");
+  });
+
+  it("keeps 8-character names on one line", () => {
+    const car = { ...smithCar, userName: "Harrison" };
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "77",
+      false,
+      false,
+      undefined,
+      car,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { graphicSvg?: string } | undefined;
+    expect(call?.graphicSvg).toContain("HARRISON");
+    expect(call?.graphicSvg).toContain("#77");
+  });
+
+  it("renders larger car number text size", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "none" },
+      false,
+      "888",
+      false,
+      false,
+      undefined,
+      smithCar,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { graphicSvg?: string } | undefined;
+    expect(call?.graphicSvg).toContain('font-size="51"');
+    expect(call?.graphicSvg).toContain("#888");
+  });
+
+  it("applies green border and enabled flag when isSelected is true", () => {
+    vi.mocked(assembleIcon).mockClear();
+
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      true, // isSelected
+      false,
+    );
+
+    // resolveBorderSettings mock returns { enabled: false }; the action spreads
+    // it with enabled: true when the button is the active selected target.
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { border: { enabled: boolean } } | undefined;
+    expect(call?.border?.enabled).toBe(true);
+  });
+
+  it("passes accentColor to assembleIcon when online", () => {
+    vi.mocked(assembleIcon).mockClear();
+
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "42",
+      false,
+      false,
+      "#00c702",
+      smithCar,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBe("#00c702");
+  });
+
+  it("suppresses accentColor when offline", () => {
+    vi.mocked(assembleIcon).mockClear();
+
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "42",
+      false,
+      true, // isOffline
+      "#00c702",
+      smithCar,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBeUndefined();
+  });
+
+  it("dims the background when isOffline is true", () => {
+    vi.mocked(assembleIcon).mockClear();
+
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
+      false,
+      "7",
+      false,
+      true, // isOffline
+      undefined,
+      smithCar,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { colors: Record<string, string> } | undefined;
+    expect(call?.colors?.backgroundColor).toBe("#333333");
+  });
+
+  // Targeting note: button press uses resolvedCarIdxs.get(contextId) — the real
+  // carIdx resolved from the session car list — not settings.slotIndex.
+  // onKeyDown is unchanged and calls setSelectedCar({ carIdx: resolvedCarIdx, ... }).
 });
