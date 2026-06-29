@@ -977,6 +977,20 @@ describe("buildSessionRoster", () => {
     expect(changed).toBe(false);
   });
 
+  it("clears roster when sessionInfo becomes null (iRacing disconnect)", () => {
+    const info = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+    ]);
+    const { roster: populated } = buildSessionRoster(info, emptyState());
+    expect(populated.carList).toHaveLength(1);
+
+    const { roster: cleared, changed, sessionReset } = buildSessionRoster(null, populated);
+    expect(changed).toBe(true);
+    expect(sessionReset).toBe(true);
+    expect(cleared.carList).toHaveLength(0);
+    expect(cleared.lastKey).toBeNull();
+  });
+
   it("populates cars from session info on first call", () => {
     const info = makeSessionInfo(1, [
       { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },

@@ -332,8 +332,10 @@ export interface SessionRosterState {
  *   so the new session's drivers replace the old ones.
  * - Within the same session, new drivers are appended and the combined list
  *   is re-sorted. Existing drivers are never removed.
- * - When `sessionInfo` is null/empty, returns unchanged state with
- *   `changed = false`.
+ * - When `sessionInfo` is null (iRacing disconnected / no active session) and
+ *   the roster already has cars, clears the roster and returns
+ *   `changed = true, sessionReset = true`. When the roster is already empty,
+ *   returns unchanged state with `changed = false`.
  *
  * The function never mutates `state`; it always returns a fresh object.
  *
@@ -343,6 +345,20 @@ export function buildSessionRoster(
   sessionInfo: unknown,
   state: SessionRosterState,
 ): { roster: SessionRosterState; changed: boolean; sessionReset: boolean } {
+  // Session info absent: iRacing disconnected or no active session.
+  // Clear any cars from the previous session so buttons revert to empty slots.
+  if (!sessionInfo) {
+    if (state.carList.length > 0) {
+      return {
+        roster: { carList: [], knownSet: new Set(), lastKey: null },
+        changed: true,
+        sessionReset: true,
+      };
+    }
+
+    return { roster: state, changed: false, sessionReset: false };
+  }
+
   const currentKey = computeSessionKey(sessionInfo);
   let workingList = state.carList;
   let workingSet = state.knownSet;
