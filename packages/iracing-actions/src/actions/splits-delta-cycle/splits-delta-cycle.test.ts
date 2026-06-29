@@ -450,6 +450,146 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
 });
 
 // ---------------------------------------------------------------------------
+// generateSplitsDeltaCycleSvg — attentionState / attentionBorderContent
+// ---------------------------------------------------------------------------
+
+describe("generateSplitsDeltaCycleSvg attentionState", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes a non-empty attentionBorderContent to assembleIcon for blackFlag state", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      undefined,
+      "blackFlag",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
+
+    expect(call?.attentionBorderContent).toContain("<rect");
+    expect(call?.attentionBorderContent).toContain("#e67e22");
+  });
+
+  it("passes a non-empty attentionBorderContent to assembleIcon for waveAround state", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      undefined,
+      "waveAround",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
+
+    expect(call?.attentionBorderContent).toContain("<rect");
+    expect(call?.attentionBorderContent).toContain("#3498db");
+  });
+
+  it("passes empty attentionBorderContent for none state", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      false,
+      undefined,
+      undefined,
+      "none",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
+
+    expect(call?.attentionBorderContent).toBe("");
+  });
+
+  it("suppresses attentionBorderContent when isOffline is true", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      true, // isOffline
+      undefined,
+      undefined,
+      "blackFlag",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
+
+    expect(call?.attentionBorderContent).toBe("");
+  });
+
+  it("suppresses attentionBorderContent when the slot is empty (no car number)", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      null, // empty slot — no car assigned
+      false,
+      false,
+      undefined,
+      undefined,
+      "blackFlag",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
+
+    expect(call?.attentionBorderContent).toBe("");
+  });
+
+  it("passes both attentionBorderContent and enables the selected border when isSelected + attention", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      true, // isSelected — green border
+      false,
+      undefined,
+      undefined,
+      "waveAround",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as
+      | {
+          attentionBorderContent?: string;
+          border?: { enabled: boolean };
+        }
+      | undefined;
+
+    // Attention border present
+    expect(call?.attentionBorderContent).toContain("#3498db");
+    // Selected border is forced enabled
+    expect(call?.border?.enabled).toBe(true);
+  });
+
+  it("does not pass attentionBorderContent for non-select-reference-car modes", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "toggle-ref-car", direction: "next", slotIndex: 0 },
+      false,
+      null,
+      false,
+      false,
+      undefined,
+      undefined,
+      "blackFlag", // ignored for other modes
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
+
+    // toggle-ref-car does not pass attentionBorderContent
+    expect(call?.attentionBorderContent).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getShortDriverName
 // ---------------------------------------------------------------------------
 

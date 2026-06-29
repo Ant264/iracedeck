@@ -3,6 +3,7 @@ import type { ResolvedBorderSettings } from "./title-settings.js";
 export const ICON_BASE_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <rect x="0" y="0" width="144" height="144" rx="24" fill="{{backgroundColor}}"/>
   {{accentBorder}}
+  {{attentionBorderContent}}
   {{borderContent}}
   {{graphicContent}}
   {{titleContent}}

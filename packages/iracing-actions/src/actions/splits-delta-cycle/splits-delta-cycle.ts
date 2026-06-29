@@ -32,6 +32,12 @@ import selectRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/select-ref-
 import { type ActiveSessionCar, getActiveSessionCars, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import {
+  getAttentionBorderSvg,
+  getRaceControlAttentionState,
+  type RaceControlAttentionState,
+} from "./race-control-attention.js";
+
 const DIRECTION_ICONS: Record<string, string> = {
   next: nextIconSvg,
   previous: previousIconSvg,
@@ -287,6 +293,7 @@ export function generateSplitsDeltaCycleSvg(
   isOffline = false,
   accentColor?: string,
   car?: ActiveSessionCar,
+  attentionState: RaceControlAttentionState = "none",
 ): string {
   const { mode, direction } = settings;
 
@@ -380,6 +387,9 @@ export function generateSplitsDeltaCycleSvg(
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
+    // Attention border is suppressed when the slot is empty or the car is offline.
+    const attentionBorderContent = hasCarNumber && !isOffline ? getAttentionBorderSvg(attentionState) : "";
+
     return assembleIcon({
       graphicSvg: selectRefTextGraphic,
       colors,
@@ -390,6 +400,7 @@ export function generateSplitsDeltaCycleSvg(
       // Accent is suppressed when offline (grey state takes priority) or when
       // the slot is empty (no car assigned).
       accentColor: isOffline ? undefined : accentColor,
+      attentionBorderContent,
     });
   }
 
@@ -435,6 +446,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   private resolvedCarRaws = new Map<string, number | null>();
   private resolvedCarIdxs = new Map<string, number | null>();
   private resolvedOfflineStates = new Map<string, boolean>();
+  private resolvedAttentionStates = new Map<string, RaceControlAttentionState>();
   private selectedCarUnsubscribers = new Map<string, () => void>();
 
   /**
@@ -481,9 +493,19 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       const resolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
       const isSelected = resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx;
       const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
+      const attentionState = this.resolvedAttentionStates.get(ev.action.id) ?? "none";
       const car = this.sessionCarList[currentSettings.slotIndex];
       const accentColor = resolveCarAccentColor(currentSettings.colorSource, car);
-      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected, isOffline, accentColor, car);
+      const svg = generateSplitsDeltaCycleSvg(
+        currentSettings,
+        false,
+        carNum,
+        isSelected,
+        isOffline,
+        accentColor,
+        car,
+        attentionState,
+      );
       void this.updateKeyImage(ev.action.id, svg);
     });
     this.selectedCarUnsubscribers.set(ev.action.id, unsubscribe);
@@ -505,6 +527,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     this.resolvedCarRaws.delete(ev.action.id);
     this.resolvedCarIdxs.delete(ev.action.id);
     this.resolvedOfflineStates.delete(ev.action.id);
+    this.resolvedAttentionStates.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SplitsDeltaCycleSettings>): Promise<void> {
@@ -613,6 +636,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         ? resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx
         : false;
     const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
+    const attentionState = this.resolvedAttentionStates.get(ev.action.id) ?? "none";
     const car = settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined;
     const accentColor = resolveCarAccentColor(settings.colorSource, car);
     const svgDataUri = generateSplitsDeltaCycleSvg(
@@ -623,6 +647,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       isOffline,
       accentColor,
       car,
+      attentionState,
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -634,6 +659,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
           ? currentResolvedCarIdx !== null && getSelectedCar()?.carIdx === currentResolvedCarIdx
           : false;
       const currentIsOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
+      const currentAttentionState = this.resolvedAttentionStates.get(ev.action.id) ?? "none";
       const currentCar = settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined;
       const currentAccentColor = resolveCarAccentColor(settings.colorSource, currentCar);
 
@@ -645,6 +671,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         currentIsOffline,
         currentAccentColor,
         currentCar,
+        currentAttentionState,
       );
     });
   }
@@ -709,17 +736,28 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     const isOffline =
       carIdx !== null && trackSurfaces !== undefined ? trackSurfaces[carIdx] === TrkLoc.NotInWorld : false;
 
+    const attentionState: RaceControlAttentionState =
+      carIdx !== null ? getRaceControlAttentionState(carIdx, telemetry) : "none";
+
     const prevCarNumber = this.resolvedCarNumbers.get(contextId);
     const prevCarIdx = this.resolvedCarIdxs.get(contextId) ?? null;
     const prevIsOffline = this.resolvedOfflineStates.get(contextId) ?? false;
+    const prevAttentionState = this.resolvedAttentionStates.get(contextId) ?? "none";
 
     this.resolvedCarNumbers.set(contextId, carNumber);
     this.resolvedCarRaws.set(contextId, carNumberRaw);
     this.resolvedCarIdxs.set(contextId, carIdx);
     this.resolvedOfflineStates.set(contextId, isOffline);
+    this.resolvedAttentionStates.set(contextId, attentionState);
 
     // Only re-render when something visible has changed
-    if (carNumber === prevCarNumber && carIdx === prevCarIdx && isOffline === prevIsOffline) return;
+    if (
+      carNumber === prevCarNumber &&
+      carIdx === prevCarIdx &&
+      isOffline === prevIsOffline &&
+      attentionState === prevAttentionState
+    )
+      return;
 
     const isSelected = carIdx !== null && getSelectedCar()?.carIdx === carIdx;
     const accentColor = resolveCarAccentColor(settings.colorSource, car ?? undefined);
@@ -731,6 +769,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       isOffline,
       accentColor,
       car ?? undefined,
+      attentionState,
     );
     void this.updateKeyImage(contextId, svg);
   }

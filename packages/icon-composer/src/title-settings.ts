@@ -535,8 +535,17 @@ export function assembleIcon(options: {
    * Pass `undefined` to suppress (offline state, empty slot, source = "none").
    */
   accentColor?: string;
+  /**
+   * When set, renders a second, thicker border below the main border to signal
+   * Race Control attention (black flag or wave-around candidate). The fragment
+   * is a raw SVG `<rect>` string produced by `getAttentionBorderSvg()` and is
+   * placed in `{{attentionBorderContent}}` — below `{{borderContent}}` — so
+   * the selected-green border always takes visual precedence.
+   * Pass `undefined` or `""` to suppress.
+   */
+  attentionBorderContent?: string;
 }): string {
-  const { graphicSvg, colors, title, border, graphic, bindingMissing, accentColor } = options;
+  const { graphicSvg, colors, title, border, graphic, bindingMissing, accentColor, attentionBorderContent } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
   let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
@@ -595,6 +604,7 @@ export function assembleIcon(options: {
   const svg = renderIconTemplate(ICON_BASE_TEMPLATE, {
     backgroundColor: colors.backgroundColor ?? "#000000",
     accentBorder,
+    attentionBorderContent: attentionBorderContent ?? "",
     borderContent,
     graphicContent,
     titleContent,
