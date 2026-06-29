@@ -32,15 +32,6 @@
 			<sdpi-textfield id="slot-index-field" setting="slotIndex" default="0" placeholder="0, 1, 2, …" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
 		</sdpi-item>
 
-		<sdpi-item id="color-source-item" label="Colour Accent" class="hidden">
-			<sdpi-select setting="colorSource" default="none">
-				<option value="none">None</option>
-				<option value="carDesign">Car Design</option>
-				<option value="carClass">Car Class</option>
-				<option value="license">Licence</option>
-			</sdpi-select>
-		</sdpi-item>
-
 		<sdpi-item id="name-source-item" label="Name Label" class="hidden">
 			<sdpi-select setting="nameSource" default="none">
 				<option value="none">None (number only)</option>
@@ -110,22 +101,18 @@
 			function updateVisibility(mode) {
 				const directionItem = document.getElementById("direction-item");
 				const slotIndexItem = document.getElementById("slot-index-item");
-				const colorSourceItem = document.getElementById("color-source-item");
 				const nameSourceItem = document.getElementById("name-source-item");
 				if (mode === "cycle") {
 					directionItem?.classList.remove("hidden");
 					slotIndexItem?.classList.add("hidden");
-					colorSourceItem?.classList.add("hidden");
 					nameSourceItem?.classList.add("hidden");
 				} else if (mode === "select-reference-car") {
 					directionItem?.classList.add("hidden");
 					slotIndexItem?.classList.remove("hidden");
-					colorSourceItem?.classList.remove("hidden");
 					nameSourceItem?.classList.remove("hidden");
 				} else {
 					directionItem?.classList.add("hidden");
 					slotIndexItem?.classList.add("hidden");
-					colorSourceItem?.classList.add("hidden");
 					nameSourceItem?.classList.add("hidden");
 				}
 			}

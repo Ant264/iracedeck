@@ -430,6 +430,23 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
     const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
     expect(call?.accentColor).toBeUndefined();
   });
+
+  it("produces no accent by default (colorSource shelved — no accentColor arg)", () => {
+    // Confirms the shelved state: select-reference-car with default settings
+    // (no accentColor passed) renders no accent border. The Colour Accent PI
+    // option has been removed; colorSource defaults to "none" in the schema.
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "7",
+      false,
+      false,
+      // accentColor intentionally omitted — mirrors resolveCarAccentColor("none", car) → undefined
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
