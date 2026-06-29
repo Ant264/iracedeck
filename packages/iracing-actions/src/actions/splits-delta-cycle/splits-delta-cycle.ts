@@ -70,6 +70,11 @@ const SplitsDeltaCycleSettings = CommonSettings.extend({
    * The real carIdx for targeting is resolved at runtime from the sorted list.
    */
   slotIndex: z.coerce.number().int().min(0).default(0),
+  /**
+   * Which colour source to use for the subtle accent strip on
+   * select-reference-car buttons. "none" disables the accent.
+   */
+  colorSource: z.enum(["none", "carDesign", "carClass", "license"]).default("none"),
 });
 
 type SplitsDeltaCycleSettings = z.infer<typeof SplitsDeltaCycleSettings>;
@@ -96,6 +101,30 @@ const MODE_KEY_MAP: Record<string, string> = {
 };
 
 /**
+ * Resolve the subtle accent colour for a car selector button given the user's
+ * chosen colour source and the session car data at that slot.
+ *
+ * Returns `undefined` when the source is "none", the car is absent, or the
+ * requested colour field is unavailable / unparseable.
+ *
+ * @internal Exported for testing
+ */
+export function resolveCarAccentColor(colorSource: string, car: ActiveSessionCar | undefined): string | undefined {
+  if (!car || colorSource === "none") return undefined;
+
+  switch (colorSource) {
+    case "carDesign":
+      return car.designColor;
+    case "carClass":
+      return car.carClassColor;
+    case "license":
+      return car.licenseColor;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * @internal Exported for testing
  */
 export function generateSplitsDeltaCycleSvg(
@@ -104,6 +133,7 @@ export function generateSplitsDeltaCycleSvg(
   resolvedCarNumber: string | null = null,
   isSelected = false,
   isOffline = false,
+  accentColor?: string,
 ): string {
   const { mode, direction } = settings;
 
@@ -149,7 +179,17 @@ export function generateSplitsDeltaCycleSvg(
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-    return assembleIcon({ graphicSvg: displayRefCarIconSvg, colors, title, border, graphic, bindingMissing });
+    return assembleIcon({
+      graphicSvg: displayRefCarIconSvg,
+      colors,
+      title,
+      border,
+      graphic,
+      bindingMissing,
+      // Accent is suppressed when offline (grey state takes priority) or when
+      // the slot is empty (no car assigned).
+      accentColor: isOffline ? undefined : accentColor,
+    });
   }
 
   const modeIconSvg = MODE_ICONS[mode];
@@ -240,7 +280,9 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       const resolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
       const isSelected = resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx;
       const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
-      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected, isOffline);
+      const car = this.sessionCarList[currentSettings.slotIndex];
+      const accentColor = resolveCarAccentColor(currentSettings.colorSource, car);
+      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected, isOffline, accentColor);
       void this.updateKeyImage(ev.action.id, svg);
     });
     this.selectedCarUnsubscribers.set(ev.action.id, unsubscribe);
@@ -370,12 +412,17 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         ? resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx
         : false;
     const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
+    const accentColor = resolveCarAccentColor(
+      settings.colorSource,
+      settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined,
+    );
     const svgDataUri = generateSplitsDeltaCycleSvg(
       settings,
       this.isBindingMissing(this.resolveSettingKey(settings)),
       carNum,
       isSelected,
       isOffline,
+      accentColor,
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -387,6 +434,10 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
           ? currentResolvedCarIdx !== null && getSelectedCar()?.carIdx === currentResolvedCarIdx
           : false;
       const currentIsOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
+      const currentAccentColor = resolveCarAccentColor(
+        settings.colorSource,
+        settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined,
+      );
 
       return generateSplitsDeltaCycleSvg(
         settings,
@@ -394,6 +445,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         currentCarNum,
         currentIsSelected,
         currentIsOffline,
+        currentAccentColor,
       );
     });
   }
@@ -471,12 +523,14 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     if (carNumber === prevCarNumber && carIdx === prevCarIdx && isOffline === prevIsOffline) return;
 
     const isSelected = carIdx !== null && getSelectedCar()?.carIdx === carIdx;
+    const accentColor = resolveCarAccentColor(settings.colorSource, car ?? undefined);
     const svg = generateSplitsDeltaCycleSvg(
       settings,
       this.isBindingMissing(this.resolveSettingKey(settings)),
       carNumber,
       isSelected,
       isOffline,
+      accentColor,
     );
     void this.updateKeyImage(contextId, svg);
   }

@@ -527,8 +527,16 @@ export function assembleIcon(options: {
   border: ResolvedBorderSettings;
   graphic?: ResolvedGraphicSettings;
   bindingMissing?: boolean;
+  /**
+   * When set, renders a thin inner border accent around the button in this
+   * colour. Used for subtle per-car colour coding (e.g. car class, licence).
+   * The accent is drawn above the background but below the border and graphic
+   * so the green selected border always takes visual precedence.
+   * Pass `undefined` to suppress (offline state, empty slot, source = "none").
+   */
+  accentColor?: string;
 }): string {
-  const { graphicSvg, colors, title, border, graphic, bindingMissing } = options;
+  const { graphicSvg, colors, title, border, graphic, bindingMissing, accentColor } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
   let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
@@ -577,8 +585,16 @@ export function assembleIcon(options: {
   const borderSvg = generateBorderParts(border);
   const borderContent = borderSvg.defs + borderSvg.rects;
 
+  // Subtle inner border accent (4 px stroke, inset 8 px from the button edge).
+  // Placed above the background but below the border so the green selected
+  // border always takes visual precedence.
+  const accentBorder = accentColor
+    ? `<rect x="8" y="8" width="128" height="128" rx="12" ry="12" fill="none" stroke="${accentColor}" stroke-width="4"/>`
+    : "";
+
   const svg = renderIconTemplate(ICON_BASE_TEMPLATE, {
     backgroundColor: colors.backgroundColor ?? "#000000",
+    accentBorder,
     borderContent,
     graphicContent,
     titleContent,

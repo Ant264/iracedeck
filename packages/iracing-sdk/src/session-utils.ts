@@ -3,6 +3,7 @@
  *
  * Functions for extracting driver and car information from iRacing session data.
  */
+import { parseCarDesignColor, parseHexColorNumber } from "./color-utils.js";
 
 interface DriverEntry {
   CarIdx: number;
@@ -12,6 +13,9 @@ interface DriverEntry {
   IsSpectator?: number;
   UserName?: string;
   CarClassShortName?: string;
+  CarDesignStr?: string;
+  CarClassColor?: unknown;
+  LicColor?: unknown;
 }
 
 /**
@@ -29,6 +33,14 @@ export interface ActiveSessionCar {
   driverName: string;
   /** Car class short name (e.g. "GT3"). Empty string when not available. */
   carClass: string;
+  /** Raw CarDesignStr from session info (e.g. "1,ffffff,ff0000,000000"). */
+  carDesignStr?: string;
+  /** First valid colour from CarDesignStr, as "#rrggbb". */
+  designColor?: string;
+  /** Car class colour from CarClassColor, as "#rrggbb". */
+  carClassColor?: string;
+  /** Licence colour from LicColor, as "#rrggbb". */
+  licenseColor?: string;
 }
 
 /**
@@ -65,12 +77,17 @@ export function getActiveSessionCars(sessionInfo: unknown): ActiveSessionCar[] {
     // original string so it is sortable alphabetically below numeric cars.
     const carNumber = cleaned.length > 0 ? cleaned : driver.CarNumber;
 
+    const carDesignStr = driver.CarDesignStr;
     result.push({
       carIdx: driver.CarIdx,
       carNumber,
       carNumberRaw: driver.CarNumberRaw,
       driverName: driver.UserName ?? "",
       carClass: driver.CarClassShortName ?? "",
+      carDesignStr,
+      designColor: parseCarDesignColor(carDesignStr),
+      carClassColor: parseHexColorNumber(driver.CarClassColor),
+      licenseColor: parseHexColorNumber(driver.LicColor),
     });
   }
 

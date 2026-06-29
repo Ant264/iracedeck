@@ -437,3 +437,52 @@ describe("resolveTitleSettings locked fields", () => {
     expect(result.bold).toBe(TITLE_DEFAULTS.bold);
   });
 });
+
+// ---------------------------------------------------------------------------
+// assembleIcon — accentColor option
+// ---------------------------------------------------------------------------
+
+describe("assembleIcon accentColor", () => {
+  it("should include an inner border rect when accentColor is provided", () => {
+    const result = assembleIcon({
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
+      colors: COLORS,
+      title: DEFAULT_TITLE,
+      border: BORDER_DEFAULTS,
+      accentColor: "#0153db",
+    });
+    const svg = decodeDataUri(result);
+    expect(svg).toContain('stroke="#0153db"');
+    expect(svg).toContain('fill="none"');
+    expect(svg).toContain('rx="12"');
+    expect(svg).toContain('stroke-width="4"');
+  });
+
+  it("should not include an accent border when accentColor is undefined", () => {
+    const result = assembleIcon({
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
+      colors: COLORS,
+      title: DEFAULT_TITLE,
+      border: BORDER_DEFAULTS,
+    });
+    const svg = decodeDataUri(result);
+    // No accent border element — the only stroke in the output should come from
+    // the selected border (disabled here), not a freestanding accent
+    expect(svg).not.toContain('stroke-width="4"');
+  });
+
+  it("should place the accent border before the selected border in the SVG", () => {
+    const result = assembleIcon({
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
+      colors: COLORS,
+      title: DEFAULT_TITLE,
+      border: { ...BORDER_DEFAULTS, enabled: true, borderColor: "#2ecc71" },
+      accentColor: "#ff0000",
+    });
+    const svg = decodeDataUri(result);
+    const accentPos = svg.indexOf('stroke="#ff0000"');
+    const borderPos = svg.indexOf('stroke="#2ecc71"');
+    expect(accentPos).toBeGreaterThan(0);
+    expect(borderPos).toBeGreaterThan(accentPos); // accent rendered before border
+  });
+});

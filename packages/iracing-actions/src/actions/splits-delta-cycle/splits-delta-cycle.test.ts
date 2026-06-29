@@ -1,7 +1,7 @@
 import { assembleIcon } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES } from "./splits-delta-cycle.js";
+import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES, resolveCarAccentColor } from "./splits-delta-cycle.js";
 
 vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -301,5 +301,123 @@ describe("SplitsDeltaCycle", () => {
       const allIcons = [sectorStart, sectorEnd, resetSet, resetRun];
       expect(new Set(allIcons).size).toBe(4);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCarAccentColor
+// ---------------------------------------------------------------------------
+
+const makeCar = (overrides: Record<string, unknown> = {}) => ({
+  carIdx: 0,
+  carNumber: "42",
+  carNumberRaw: 42,
+  driverName: "Driver",
+  carClass: "GT3",
+  carDesignStr: "0,ff0000,ffffff,000000",
+  designColor: "#ff0000",
+  carClassColor: "#00c702",
+  licenseColor: "#0153db",
+  ...overrides,
+});
+
+describe("resolveCarAccentColor", () => {
+  it("returns undefined when colorSource is 'none'", () => {
+    expect(resolveCarAccentColor("none", makeCar())).toBeUndefined();
+  });
+
+  it("returns undefined when car is undefined", () => {
+    expect(resolveCarAccentColor("carClass", undefined)).toBeUndefined();
+  });
+
+  it("returns designColor for colorSource 'carDesign'", () => {
+    expect(resolveCarAccentColor("carDesign", makeCar())).toBe("#ff0000");
+  });
+
+  it("returns carClassColor for colorSource 'carClass'", () => {
+    expect(resolveCarAccentColor("carClass", makeCar())).toBe("#00c702");
+  });
+
+  it("returns licenseColor for colorSource 'license'", () => {
+    expect(resolveCarAccentColor("license", makeCar())).toBe("#0153db");
+  });
+
+  it("returns undefined when the requested field is absent on the car", () => {
+    const car = makeCar({ designColor: undefined, carClassColor: undefined, licenseColor: undefined });
+    expect(resolveCarAccentColor("carDesign", car)).toBeUndefined();
+    expect(resolveCarAccentColor("carClass", car)).toBeUndefined();
+    expect(resolveCarAccentColor("license", car)).toBeUndefined();
+  });
+
+  it("returns undefined for an unknown colorSource value", () => {
+    expect(resolveCarAccentColor("unknown", makeCar())).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateSplitsDeltaCycleSvg — accentColor pass-through
+// ---------------------------------------------------------------------------
+
+describe("generateSplitsDeltaCycleSvg accentColor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes accentColor through to assembleIcon for select-reference-car", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      false,
+      "#00c702",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBe("#00c702");
+  });
+
+  it("suppresses accentColor when isOffline is true", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      true, // isOffline
+      "#00c702",
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBeUndefined();
+  });
+
+  it("passes undefined accentColor when no accent is provided", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      false,
+      // no accentColor argument
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBeUndefined();
+  });
+
+  it("does not pass accentColor for non-select-reference-car modes", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "toggle-ref-car", direction: "next", slotIndex: 0 },
+      false,
+      null,
+      false,
+      false,
+      "#00c702",
+    );
+
+    // toggle-ref-car does not reach the select-reference-car branch —
+    // assembleIcon is called once, but without the accentColor
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
+    expect(call?.accentColor).toBeUndefined();
   });
 });

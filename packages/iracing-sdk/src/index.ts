@@ -136,6 +136,9 @@ export {
   getActiveSessionCars,
 } from "./session-utils.js";
 
+// Colour parsing utilities for session info fields
+export { parseCarDesignColor, parseHexColorNumber } from "./color-utils.js";
+
 // Telemetry snapshot formatting utilities
 export {
   type DriverInfo,

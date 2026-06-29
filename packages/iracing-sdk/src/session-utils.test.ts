@@ -494,4 +494,76 @@ describe("getActiveSessionCars", () => {
     expect(result[0].carIdx).toBe(1); // "5" first
     expect(result[1].carIdx).toBe(0); // "ABC" second
   });
+
+  describe("colour fields", () => {
+    const makeDriver = (overrides: Record<string, unknown> = {}) => ({
+      CarIdx: 0,
+      CarNumber: "42",
+      CarNumberRaw: 42,
+      CarIsPaceCar: 0,
+      IsSpectator: 0,
+      UserName: "Driver",
+      CarClassShortName: "GT3",
+      ...overrides,
+    });
+
+    it("populates designColor from a valid CarDesignStr", () => {
+      const info = { DriverInfo: { Drivers: [makeDriver({ CarDesignStr: "1,0000ff,ffffff,ff0000" })] } };
+      const result = getActiveSessionCars(info);
+      expect(result[0].carDesignStr).toBe("1,0000ff,ffffff,ff0000");
+      expect(result[0].designColor).toBe("#0000ff");
+    });
+
+    it("populates carClassColor from a numeric CarClassColor", () => {
+      const info = { DriverInfo: { Drivers: [makeDriver({ CarClassColor: 0xffffff })] } };
+      const result = getActiveSessionCars(info);
+      expect(result[0].carClassColor).toBe("#ffffff");
+    });
+
+    it("populates licenseColor from a numeric LicColor", () => {
+      const info = { DriverInfo: { Drivers: [makeDriver({ LicColor: 0x0153db })] } };
+      const result = getActiveSessionCars(info);
+      expect(result[0].licenseColor).toBe("#0153db");
+    });
+
+    it("leaves colour fields undefined when driver has no colour data", () => {
+      const info = { DriverInfo: { Drivers: [makeDriver()] } };
+      const result = getActiveSessionCars(info);
+      expect(result[0].carDesignStr).toBeUndefined();
+      expect(result[0].designColor).toBeUndefined();
+      expect(result[0].carClassColor).toBeUndefined();
+      expect(result[0].licenseColor).toBeUndefined();
+    });
+
+    it("leaves designColor undefined when CarDesignStr has no valid colour token", () => {
+      const info = { DriverInfo: { Drivers: [makeDriver({ CarDesignStr: "0,INVALID,ALSO_BAD" })] } };
+      const result = getActiveSessionCars(info);
+      expect(result[0].carDesignStr).toBe("0,INVALID,ALSO_BAD");
+      expect(result[0].designColor).toBeUndefined();
+    });
+
+    it("leaves carClassColor undefined for missing CarClassColor", () => {
+      const info = { DriverInfo: { Drivers: [makeDriver({ CarClassColor: undefined })] } };
+      const result = getActiveSessionCars(info);
+      expect(result[0].carClassColor).toBeUndefined();
+    });
+
+    it("populates all three colour fields together", () => {
+      const info = {
+        DriverInfo: {
+          Drivers: [
+            makeDriver({
+              CarDesignStr: "0,ff0000,ffffff,000000",
+              CarClassColor: 0x00c702,
+              LicColor: 0x0153db,
+            }),
+          ],
+        },
+      };
+      const result = getActiveSessionCars(info);
+      expect(result[0].designColor).toBe("#ff0000");
+      expect(result[0].carClassColor).toBe("#00c702");
+      expect(result[0].licenseColor).toBe("#0153db");
+    });
+  });
 });
