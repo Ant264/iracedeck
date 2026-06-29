@@ -2,12 +2,15 @@ import { assembleIcon } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildSessionRoster,
+  computeSessionKey,
   generateSplitsDeltaCycleSvg,
   getShortDriverName,
   getSmartDriverNameLabel,
   GLOBAL_KEY_NAMES,
   resolveCarAccentColor,
   resolveCarNameLabel,
+  type SessionRosterState,
 } from "./splits-delta-cycle.js";
 
 vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
@@ -221,21 +224,6 @@ describe("SplitsDeltaCycle", () => {
       expect(decoded).toContain("—");
     });
 
-    it("should apply dim background color when isOffline is true", () => {
-      vi.mocked(assembleIcon).mockClear();
-
-      generateSplitsDeltaCycleSvg(
-        { mode: "select-reference-car", direction: "next", slotIndex: 2 },
-        false,
-        "7",
-        false,
-        true,
-      );
-
-      const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { colors: Record<string, string> } | undefined;
-      expect(call?.colors?.backgroundColor).toBe("#333333");
-    });
-
     it("should include REFERENCE and CAR labels for toggle-ref-car mode", () => {
       const result = generateSplitsDeltaCycleSvg({ mode: "toggle-ref-car", direction: "next" });
       const decoded = decodeURIComponent(result);
@@ -379,7 +367,6 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
       false,
       "42",
       false,
-      false,
       "#00c702",
     );
 
@@ -387,26 +374,11 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
     expect(call?.accentColor).toBe("#00c702");
   });
 
-  it("suppresses accentColor when isOffline is true", () => {
-    generateSplitsDeltaCycleSvg(
-      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
-      false,
-      "42",
-      false,
-      true, // isOffline
-      "#00c702",
-    );
-
-    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
-    expect(call?.accentColor).toBeUndefined();
-  });
-
   it("passes undefined accentColor when no accent is provided", () => {
     generateSplitsDeltaCycleSvg(
       { mode: "select-reference-car", direction: "next", slotIndex: 0 },
       false,
       "42",
-      false,
       false,
       // no accentColor argument
     );
@@ -420,7 +392,6 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
       { mode: "toggle-ref-car", direction: "next", slotIndex: 0 },
       false,
       null,
-      false,
       false,
       "#00c702",
     );
@@ -439,7 +410,6 @@ describe("generateSplitsDeltaCycleSvg accentColor", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0 },
       false,
       "7",
-      false,
       false,
       // accentColor intentionally omitted — mirrors resolveCarAccentColor("none", car) → undefined
     );
@@ -464,7 +434,6 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
       false,
       "42",
       false,
-      false,
       undefined,
       undefined,
       "blackFlag",
@@ -481,7 +450,6 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0 },
       false,
       "42",
-      false,
       false,
       undefined,
       undefined,
@@ -500,27 +468,9 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
       false,
       "42",
       false,
-      false,
       undefined,
       undefined,
       "none",
-    );
-
-    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
-
-    expect(call?.attentionBorderContent).toBe("");
-  });
-
-  it("suppresses attentionBorderContent when isOffline is true", () => {
-    generateSplitsDeltaCycleSvg(
-      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
-      false,
-      "42",
-      false,
-      true, // isOffline
-      undefined,
-      undefined,
-      "blackFlag",
     );
 
     const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
@@ -533,7 +483,6 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0 },
       false,
       null, // empty slot — no car assigned
-      false,
       false,
       undefined,
       undefined,
@@ -551,7 +500,6 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
       false,
       "42",
       true, // isSelected — green border
-      false,
       undefined,
       undefined,
       "waveAround",
@@ -575,7 +523,6 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
       { mode: "toggle-ref-car", direction: "next", slotIndex: 0 },
       false,
       null,
-      false,
       false,
       undefined,
       undefined,
@@ -770,7 +717,7 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "42",
       false,
-      false,
+
       undefined,
       car,
     );
@@ -785,7 +732,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
       false,
       "42",
-      false,
       false,
       undefined,
       smithCar,
@@ -803,7 +749,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "42",
       false,
-      false,
       undefined,
       smithCar,
     );
@@ -819,7 +764,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
       false,
       "42",
-      false,
       false,
       undefined,
       car,
@@ -837,7 +781,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "42",
       false,
-      false,
       undefined,
       car,
     );
@@ -852,7 +795,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "none" },
       false,
       "42",
-      false,
       false,
       undefined,
       smithCar,
@@ -870,7 +812,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "42",
       false,
-      false,
       undefined,
       smithCar, // no abbrevName field
     );
@@ -885,7 +826,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
       false,
       null,
-      false,
       false,
       undefined,
       smithCar,
@@ -902,7 +842,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
       false,
       "1",
-      false,
       false,
       undefined,
       car,
@@ -921,7 +860,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "77",
       false,
-      false,
       undefined,
       car,
     );
@@ -936,7 +874,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "none" },
       false,
       "888",
-      false,
       false,
       undefined,
       smithCar,
@@ -955,7 +892,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "42",
       true, // isSelected
-      false,
     );
 
     // resolveBorderSettings mock returns { enabled: false }; the action spreads
@@ -972,7 +908,6 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
       false,
       "42",
       false,
-      false,
       "#00c702",
       smithCar,
     );
@@ -981,41 +916,149 @@ describe("generateSplitsDeltaCycleSvg select-reference-car driver name", () => {
     expect(call?.accentColor).toBe("#00c702");
   });
 
-  it("suppresses accentColor when offline", () => {
-    vi.mocked(assembleIcon).mockClear();
-
-    generateSplitsDeltaCycleSvg(
-      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
-      false,
-      "42",
-      false,
-      true, // isOffline
-      "#00c702",
-      smithCar,
-    );
-
-    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { accentColor?: string } | undefined;
-    expect(call?.accentColor).toBeUndefined();
-  });
-
-  it("dims the background when isOffline is true", () => {
-    vi.mocked(assembleIcon).mockClear();
-
-    generateSplitsDeltaCycleSvg(
-      { mode: "select-reference-car", direction: "next", slotIndex: 0, nameSource: "smartName" },
-      false,
-      "7",
-      false,
-      true, // isOffline
-      undefined,
-      smithCar,
-    );
-
-    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { colors: Record<string, string> } | undefined;
-    expect(call?.colors?.backgroundColor).toBe("#333333");
-  });
-
   // Targeting note: button press uses resolvedCarIdxs.get(contextId) — the real
   // carIdx resolved from the session car list — not settings.slotIndex.
   // onKeyDown is unchanged and calls setSelectedCar({ carIdx: resolvedCarIdx, ... }).
+});
+
+// ---------------------------------------------------------------------------
+// computeSessionKey
+// ---------------------------------------------------------------------------
+
+describe("computeSessionKey", () => {
+  it("returns null when sessionInfo is null", () => {
+    expect(computeSessionKey(null)).toBeNull();
+  });
+
+  it("returns null when sessionInfo has no WeekendInfo", () => {
+    expect(computeSessionKey({})).toBeNull();
+    expect(computeSessionKey({ DriverInfo: {} })).toBeNull();
+  });
+
+  it("returns sub:N when SubSessionID is present and non-zero", () => {
+    expect(computeSessionKey({ WeekendInfo: { SubSessionID: 12345 } })).toBe("sub:12345");
+  });
+
+  it("ignores SubSessionID when it is 0", () => {
+    const info = { WeekendInfo: { SubSessionID: 0, SessionID: 99, TrackName: "Spa", EventType: "Race" } };
+    expect(computeSessionKey(info)).toBe("s:99:Spa:Race");
+  });
+
+  it("falls back to SessionID+TrackName+EventType when no SubSessionID", () => {
+    const info = { WeekendInfo: { SessionID: 7, TrackName: "Silverstone", EventType: "Practice" } };
+    expect(computeSessionKey(info)).toBe("s:7:Silverstone:Practice");
+  });
+
+  it("returns null when neither SubSessionID nor SessionID is present", () => {
+    expect(computeSessionKey({ WeekendInfo: { TrackName: "Spa" } })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSessionRoster
+// ---------------------------------------------------------------------------
+
+describe("buildSessionRoster", () => {
+  const emptyState = (): SessionRosterState => ({ carList: [], knownSet: new Set(), lastKey: null });
+
+  const makeSessionInfo = (
+    subSessionId: number,
+    cars: Array<{ CarIdx: number; CarNumber: string; CarNumberRaw: number; UserName: string }>,
+  ) => ({
+    WeekendInfo: { SubSessionID: subSessionId },
+    DriverInfo: {
+      Drivers: cars.map((c) => ({ ...c, CarIsPaceCar: 0, IsSpectator: 0 })),
+    },
+  });
+
+  it("returns empty list when sessionInfo is null", () => {
+    const { roster, changed } = buildSessionRoster(null, emptyState());
+    expect(roster.carList).toHaveLength(0);
+    expect(changed).toBe(false);
+  });
+
+  it("populates cars from session info on first call", () => {
+    const info = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+      { CarIdx: 5, CarNumber: "7", CarNumberRaw: 7, UserName: "Driver B" },
+    ]);
+    const { roster, changed } = buildSessionRoster(info, emptyState());
+    expect(roster.carList).toHaveLength(2);
+    expect(changed).toBe(true);
+  });
+
+  it("sorts roster numerically by car number", () => {
+    const info = makeSessionInfo(1, [
+      { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42, UserName: "D" },
+      { CarIdx: 2, CarNumber: "4", CarNumberRaw: 4, UserName: "D" },
+      { CarIdx: 3, CarNumber: "12", CarNumberRaw: 12, UserName: "D" },
+      { CarIdx: 4, CarNumber: "7", CarNumberRaw: 7, UserName: "D" },
+    ]);
+    const { roster } = buildSessionRoster(info, emptyState());
+    expect(roster.carList.map((c) => c.carNumber)).toEqual(["4", "7", "12", "42"]);
+  });
+
+  it("adds new joiner in same session without session reset", () => {
+    const info1 = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+    ]);
+    const { roster: state1 } = buildSessionRoster(info1, emptyState());
+
+    const info2 = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+      { CarIdx: 5, CarNumber: "7", CarNumberRaw: 7, UserName: "Driver B" },
+    ]);
+    const { roster: state2, changed, sessionReset } = buildSessionRoster(info2, state1);
+    expect(changed).toBe(true);
+    expect(sessionReset).toBe(false);
+    expect(state2.carList).toHaveLength(2);
+  });
+
+  it("returns changed=false when same session and no new cars", () => {
+    const info = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+    ]);
+    const { roster: state1 } = buildSessionRoster(info, emptyState());
+    const { changed, sessionReset } = buildSessionRoster(info, state1);
+    expect(changed).toBe(false);
+    expect(sessionReset).toBe(false);
+  });
+
+  it("resets roster and rebuilds on session key change", () => {
+    const info1 = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+    ]);
+    const { roster: state1 } = buildSessionRoster(info1, emptyState());
+
+    const info2 = makeSessionInfo(2, [
+      { CarIdx: 7, CarNumber: "99", CarNumberRaw: 99, UserName: "Driver X" },
+    ]);
+    const { roster: state2, changed, sessionReset } = buildSessionRoster(info2, state1);
+    expect(changed).toBe(true);
+    expect(sessionReset).toBe(true);
+    expect(state2.carList).toHaveLength(1);
+    expect(state2.carList[0].carNumber).toBe("99");
+  });
+
+  it("does not retain old session cars after session key change", () => {
+    const info1 = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+    ]);
+    const { roster: state1 } = buildSessionRoster(info1, emptyState());
+
+    const info2 = makeSessionInfo(2, [
+      { CarIdx: 7, CarNumber: "99", CarNumberRaw: 99, UserName: "Driver X" },
+    ]);
+    const { roster: state2 } = buildSessionRoster(info2, state1);
+    expect(state2.carList.find((c) => c.carNumber === "42")).toBeUndefined();
+  });
+
+  it("includes cars regardless of track surface (no offline concept)", () => {
+    // Roster is built purely from DriverInfo — CarIdxTrackSurface has no effect.
+    const info = makeSessionInfo(1, [
+      { CarIdx: 3, CarNumber: "42", CarNumberRaw: 42, UserName: "Driver A" },
+    ]);
+    const { roster } = buildSessionRoster(info, emptyState());
+    expect(roster.carList[0].carNumber).toBe("42");
+  });
 });

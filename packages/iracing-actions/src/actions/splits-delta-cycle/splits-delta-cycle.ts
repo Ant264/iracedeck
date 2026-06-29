@@ -29,7 +29,7 @@ import displayRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/display-re
 import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
 import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import selectRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/select-ref-car.svg";
-import { type ActiveSessionCar, getActiveSessionCars, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { type ActiveSessionCar, getActiveSessionCars, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import {
@@ -283,6 +283,121 @@ export function resolveCarNameLabel(nameSource: string, car: ActiveSessionCar | 
 }
 
 /**
+ * Compute a stable identity string for the current iRacing session.
+ *
+ * Used to detect when the user switches between replays or sessions so the
+ * selector roster can be reset and rebuilt from the new session info.
+ *
+ * Priority: `SubSessionID` → `SessionID + TrackName + EventType` → `null`.
+ * Returns `null` when no identifying information is available (e.g. not yet
+ * connected to a session).
+ *
+ * @internal Exported for testing
+ */
+export function computeSessionKey(sessionInfo: unknown): string | null {
+  const weekend = (sessionInfo as Record<string, unknown>)?.WeekendInfo as Record<string, unknown> | undefined;
+
+  if (!weekend) return null;
+
+  const subSessionId = weekend.SubSessionID;
+
+  if (subSessionId !== undefined && subSessionId !== 0) return `sub:${subSessionId}`;
+
+  const sessionId = weekend.SessionID;
+  const trackName = weekend.TrackName ?? weekend.TrackDisplayName ?? "";
+  const eventType = weekend.EventType ?? "";
+
+  if (sessionId !== undefined) return `s:${sessionId}:${trackName}:${eventType}`;
+
+  return null;
+}
+
+/**
+ * Mutable state bag for the session car roster.
+ * Held on the action class and passed into {@link buildSessionRoster} on each update.
+ *
+ * @internal Exported for testing
+ */
+export interface SessionRosterState {
+  carList: ActiveSessionCar[];
+  knownSet: Set<number>;
+  lastKey: string | null;
+}
+
+/**
+ * Pure roster update: merges new drivers from `sessionInfo` into `state` and
+ * detects session changes.
+ *
+ * - If the session key changes, the car list and known-set are cleared first
+ *   so the new session's drivers replace the old ones.
+ * - Within the same session, new drivers are appended and the combined list
+ *   is re-sorted. Existing drivers are never removed.
+ * - When `sessionInfo` is null/empty, returns unchanged state with
+ *   `changed = false`.
+ *
+ * The function never mutates `state`; it always returns a fresh object.
+ *
+ * @internal Exported for testing
+ */
+export function buildSessionRoster(
+  sessionInfo: unknown,
+  state: SessionRosterState,
+): { roster: SessionRosterState; changed: boolean; sessionReset: boolean } {
+  const currentKey = computeSessionKey(sessionInfo);
+  let workingList = state.carList;
+  let workingSet = state.knownSet;
+  let sessionReset = false;
+
+  // Session identity changed — start a clean slate for this session.
+  if (currentKey !== null && currentKey !== state.lastKey) {
+    workingList = [];
+    workingSet = new Set<number>();
+    sessionReset = true;
+  }
+
+  const snapshot = getActiveSessionCars(sessionInfo);
+  const newCars = snapshot.filter((c) => !workingSet.has(c.carIdx));
+  const nextKey = currentKey ?? state.lastKey;
+
+  if (newCars.length === 0) {
+    return {
+      roster: { carList: workingList, knownSet: workingSet, lastKey: nextKey },
+      changed: sessionReset,
+      sessionReset,
+    };
+  }
+
+  const updatedList = [...workingList, ...newCars];
+  const updatedSet = new Set(workingSet);
+
+  for (const car of newCars) {
+    updatedSet.add(car.carIdx);
+  }
+
+  // Re-sort: numeric car numbers first (ascending), then alphabetic.
+  updatedList.sort((a, b) => {
+    const aNum = Number(a.carNumber);
+    const bNum = Number(b.carNumber);
+    const aIsNum = a.carNumber !== "" && !Number.isNaN(aNum);
+    const bIsNum = b.carNumber !== "" && !Number.isNaN(bNum);
+
+    if (aIsNum && bIsNum) return aNum - bNum;
+
+    if (aIsNum) return -1;
+
+    if (bIsNum) return 1;
+
+    return a.carNumber.localeCompare(b.carNumber);
+  });
+
+  return {
+    roster: { carList: updatedList, knownSet: updatedSet, lastKey: nextKey },
+    changed: true,
+    sessionReset,
+  };
+}
+
+/**
  * @internal Exported for testing
  */
 export function generateSplitsDeltaCycleSvg(
@@ -290,7 +405,6 @@ export function generateSplitsDeltaCycleSvg(
   bindingMissing = false,
   resolvedCarNumber: string | null = null,
   isSelected = false,
-  isOffline = false,
   accentColor?: string,
   car?: ActiveSessionCar,
   attentionState: RaceControlAttentionState = "none",
@@ -316,9 +430,7 @@ export function generateSplitsDeltaCycleSvg(
 
   if (mode === "select-reference-car") {
     const baseColors = resolveIconColors(selectRefCarIconSvg, getGlobalColors(), settings.colorOverrides);
-    // Dim the background when the driver is offline/disconnected so the user
-    // knows the slot is occupied but unavailable.
-    const colors = isOffline ? { ...baseColors, backgroundColor: "#333333" } : baseColors;
+    const colors = baseColors;
 
     // Build text lines for custom graphic layout: optional name line(s) above a
     // larger anchored car-number line.
@@ -387,8 +499,8 @@ export function generateSplitsDeltaCycleSvg(
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-    // Attention border is suppressed when the slot is empty or the car is offline.
-    const attentionBorderContent = hasCarNumber && !isOffline ? getAttentionBorderSvg(attentionState) : "";
+    // Attention border is suppressed when the slot is empty.
+    const attentionBorderContent = hasCarNumber ? getAttentionBorderSvg(attentionState) : "";
 
     return assembleIcon({
       graphicSvg: selectRefTextGraphic,
@@ -399,7 +511,7 @@ export function generateSplitsDeltaCycleSvg(
       bindingMissing,
       // Accent is suppressed when offline (grey state takes priority) or when
       // the slot is empty (no car assigned).
-      accentColor: isOffline ? undefined : accentColor,
+      accentColor,
       attentionBorderContent,
     });
   }
@@ -445,18 +557,16 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   private resolvedCarNumbers = new Map<string, string | null>();
   private resolvedCarRaws = new Map<string, number | null>();
   private resolvedCarIdxs = new Map<string, number | null>();
-  private resolvedOfflineStates = new Map<string, boolean>();
   private resolvedAttentionStates = new Map<string, RaceControlAttentionState>();
   private selectedCarUnsubscribers = new Map<string, () => void>();
 
   /**
-   * Stable session car list sorted by car number.
-   * Cars are never removed from this list — disconnected drivers remain
-   * so that slot assignments don't shift unexpectedly.
+   * Stable session car roster.
+   * Cars are never removed within a session — disconnected drivers remain so
+   * that slot assignments don't shift unexpectedly.
+   * Cleared and rebuilt when the session identity changes.
    */
-  private sessionCarList: ActiveSessionCar[] = [];
-  /** Fast lookup set of carIdxs already present in sessionCarList. */
-  private knownCarIdxSet = new Set<number>();
+  private rosterState: SessionRosterState = { carList: [], knownSet: new Set(), lastKey: null };
 
   override async onWillAppear(ev: IDeckWillAppearEvent<SplitsDeltaCycleSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -492,16 +602,14 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       const carNum = this.resolvedCarNumbers.get(ev.action.id) ?? null;
       const resolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
       const isSelected = resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx;
-      const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
       const attentionState = this.resolvedAttentionStates.get(ev.action.id) ?? "none";
-      const car = this.sessionCarList[currentSettings.slotIndex];
+      const car = this.rosterState.carList[currentSettings.slotIndex];
       const accentColor = resolveCarAccentColor(currentSettings.colorSource, car);
       const svg = generateSplitsDeltaCycleSvg(
         currentSettings,
         false,
         carNum,
         isSelected,
-        isOffline,
         accentColor,
         car,
         attentionState,
@@ -510,7 +618,9 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     });
     this.selectedCarUnsubscribers.set(ev.action.id, unsubscribe);
 
-    // Initial resolution: seed the car list from current session info
+    // Initial resolution: seed the car list from current session info.
+    // This fires even when no telemetry is available so buttons populate as
+    // soon as iRacing reports a valid session (no need to be on track).
     if (settings.mode === "select-reference-car") {
       this.updateSessionCarList(this.sdkController.getSessionInfo());
       this.updateCarFromSession(ev.action.id, settings, null);
@@ -526,7 +636,6 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     this.resolvedCarNumbers.delete(ev.action.id);
     this.resolvedCarRaws.delete(ev.action.id);
     this.resolvedCarIdxs.delete(ev.action.id);
-    this.resolvedOfflineStates.delete(ev.action.id);
     this.resolvedAttentionStates.delete(ev.action.id);
   }
 
@@ -635,16 +744,14 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       settings.mode === "select-reference-car"
         ? resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx
         : false;
-    const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
     const attentionState = this.resolvedAttentionStates.get(ev.action.id) ?? "none";
-    const car = settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined;
+    const car = settings.mode === "select-reference-car" ? this.rosterState.carList[settings.slotIndex] : undefined;
     const accentColor = resolveCarAccentColor(settings.colorSource, car);
     const svgDataUri = generateSplitsDeltaCycleSvg(
       settings,
       this.isBindingMissing(this.resolveSettingKey(settings)),
       carNum,
       isSelected,
-      isOffline,
       accentColor,
       car,
       attentionState,
@@ -658,9 +765,9 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         settings.mode === "select-reference-car"
           ? currentResolvedCarIdx !== null && getSelectedCar()?.carIdx === currentResolvedCarIdx
           : false;
-      const currentIsOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
       const currentAttentionState = this.resolvedAttentionStates.get(ev.action.id) ?? "none";
-      const currentCar = settings.mode === "select-reference-car" ? this.sessionCarList[settings.slotIndex] : undefined;
+      const currentCar =
+        settings.mode === "select-reference-car" ? this.rosterState.carList[settings.slotIndex] : undefined;
       const currentAccentColor = resolveCarAccentColor(settings.colorSource, currentCar);
 
       return generateSplitsDeltaCycleSvg(
@@ -668,7 +775,6 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
         this.isBindingMissing(this.resolveSettingKey(settings)),
         currentCarNum,
         currentIsSelected,
-        currentIsOffline,
         currentAccentColor,
         currentCar,
         currentAttentionState,
@@ -677,87 +783,84 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   }
 
   /**
-   * Integrate new drivers from the latest session info into the stable car list.
-   * Existing entries are never removed — disconnected drivers stay in place so
-   * slot assignments remain stable throughout the session.
+   * Apply the latest session info to the roster.
    *
-   * @returns `true` when new drivers were added (callers should refresh all slots).
+   * Delegates the pure update logic to {@link buildSessionRoster}. When the
+   * session identity changes (different replay / new session), all per-context
+   * resolved state is cleared, the selected car is reset, and every visible
+   * selector button is re-rendered from the new session's driver list.
+   *
+   * @returns `true` when the roster changed (callers should refresh all slots).
    */
   private updateSessionCarList(sessionInfo: unknown): boolean {
-    const snapshot = getActiveSessionCars(sessionInfo);
-    const newCars = snapshot.filter((c) => !this.knownCarIdxSet.has(c.carIdx));
+    const prevCount = this.rosterState.carList.length;
+    const { roster, changed, sessionReset } = buildSessionRoster(sessionInfo, this.rosterState);
 
-    if (newCars.length === 0) return false;
+    this.rosterState = roster;
 
-    for (const car of newCars) {
-      this.sessionCarList.push(car);
-      this.knownCarIdxSet.add(car.carIdx);
+    if (sessionReset) {
+      this.logger.info("Session changed, selector roster reset");
+      this.logger.debug(`New session key: ${roster.lastKey ?? "(none)"}`);
+
+      // Clear all per-context state so stale car data is not shown.
+      for (const contextId of this.activeContexts.keys()) {
+        this.resolvedCarNumbers.set(contextId, null);
+        this.resolvedCarRaws.set(contextId, null);
+        this.resolvedCarIdxs.set(contextId, null);
+        this.resolvedAttentionStates.set(contextId, "none");
+      }
+
+      // Clear the selected car — it belonged to the previous session.
+      clearSelectedCar();
     }
 
-    // Re-sort the combined list by car number (numeric first, then alphabetic)
-    this.sessionCarList.sort((a, b) => {
-      const aNum = Number(a.carNumber);
-      const bNum = Number(b.carNumber);
-      const aIsNum = a.carNumber !== "" && !Number.isNaN(aNum);
-      const bIsNum = b.carNumber !== "" && !Number.isNaN(bNum);
+    if (changed) {
+      const addedCount = roster.carList.length - (sessionReset ? 0 : prevCount);
 
-      if (aIsNum && bIsNum) return aNum - bNum;
+      this.logger.debug(
+        `Session car list updated: ${roster.carList.length} cars${sessionReset ? " (session reset)" : ` (added ${addedCount})`}`,
+      );
+    }
 
-      if (aIsNum) return -1;
-
-      if (bIsNum) return 1;
-
-      return a.carNumber.localeCompare(b.carNumber);
-    });
-
-    this.logger.debug(`Session car list updated: ${this.sessionCarList.length} cars (added ${newCars.length})`);
-
-    return true;
+    return changed;
   }
 
   /**
-   * Resolve the car assigned to a button's slot, check its online status, and
-   * re-render the button if anything has changed.
+   * Resolve the car assigned to a button's slot, check its attention state,
+   * and re-render the button if anything has changed.
+   *
+   * Offline/grey state is intentionally not computed here — `NotInWorld` on
+   * `CarIdxTrackSurface` is not a reliable disconnect signal. Cars in the pit
+   * stall, garage, or pre-session holding area remain selectable and render
+   * at full brightness.
    */
   private updateCarFromSession(
     contextId: string,
     settings: SplitsDeltaCycleSettings,
     telemetry: TelemetryData | null,
   ): void {
-    const car = this.sessionCarList[settings.slotIndex] ?? null;
+    const car = this.rosterState.carList[settings.slotIndex] ?? null;
 
     const carNumber = car?.carNumber ?? null;
     const carNumberRaw = car?.carNumberRaw ?? null;
     const carIdx = car?.carIdx ?? null;
 
-    // Detect offline status: CarIdxTrackSurface is -1 (TrkLoc.NotInWorld) when
-    // the car is not spawned / driver has disconnected.
-    const trackSurfaces = telemetry?.CarIdxTrackSurface as number[] | undefined;
-    const isOffline =
-      carIdx !== null && trackSurfaces !== undefined ? trackSurfaces[carIdx] === TrkLoc.NotInWorld : false;
-
+    // Attention state is derived from live telemetry. Missing telemetry returns
+    // "none" so roster buttons render immediately without waiting for on-track data.
     const attentionState: RaceControlAttentionState =
       carIdx !== null ? getRaceControlAttentionState(carIdx, telemetry) : "none";
 
     const prevCarNumber = this.resolvedCarNumbers.get(contextId);
     const prevCarIdx = this.resolvedCarIdxs.get(contextId) ?? null;
-    const prevIsOffline = this.resolvedOfflineStates.get(contextId) ?? false;
     const prevAttentionState = this.resolvedAttentionStates.get(contextId) ?? "none";
 
     this.resolvedCarNumbers.set(contextId, carNumber);
     this.resolvedCarRaws.set(contextId, carNumberRaw);
     this.resolvedCarIdxs.set(contextId, carIdx);
-    this.resolvedOfflineStates.set(contextId, isOffline);
     this.resolvedAttentionStates.set(contextId, attentionState);
 
-    // Only re-render when something visible has changed
-    if (
-      carNumber === prevCarNumber &&
-      carIdx === prevCarIdx &&
-      isOffline === prevIsOffline &&
-      attentionState === prevAttentionState
-    )
-      return;
+    // Only re-render when something visible has changed.
+    if (carNumber === prevCarNumber && carIdx === prevCarIdx && attentionState === prevAttentionState) return;
 
     const isSelected = carIdx !== null && getSelectedCar()?.carIdx === carIdx;
     const accentColor = resolveCarAccentColor(settings.colorSource, car ?? undefined);
@@ -766,7 +869,6 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       this.isBindingMissing(this.resolveSettingKey(settings)),
       carNumber,
       isSelected,
-      isOffline,
       accentColor,
       car ?? undefined,
       attentionState,
