@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "iRaceDeck",
-  "Version": "1.22.2.1797",
+  "Version": "1.23.0.1813",
   "Author": "Niklas Lampén",
   "Actions": [
     {
@@ -744,6 +744,23 @@
       ]
     },
     {
+      "Name": "Switch Profile",
+      "UUID": "com.iracedeck.sd.core.switch-profile",
+      "Icon": "imgs/actions/switch-profile/icon",
+      "Tooltip": "Switch your Stream Deck to a bundled iRaceDeck profile",
+      "PropertyInspectorPath": "ui/switch-profile.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/switch-profile/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Telemetry Control",
       "UUID": "com.iracedeck.sd.core.telemetry-control",
       "Icon": "imgs/actions/telemetry-control/icon",
@@ -887,5 +904,19 @@
       "iRacingSim64DX11.exe"
     ]
   },
+  "Profiles": [
+    {
+      "Name": "iRaceDeck Default",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    }
+  ],
   "UUID": "com.iracedeck.sd.core"
 }
