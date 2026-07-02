@@ -407,6 +407,23 @@
       ]
     },
     {
+      "Name": "Race Control Alert Slot",
+      "UUID": "com.iracedeck.sd.core.race-control-alert-slot",
+      "Icon": "imgs/actions/race-control-alert-slot/icon",
+      "Tooltip": "Placeholder slot that auto-populates when a car needs race-control attention (black flag or wave-around)",
+      "PropertyInspectorPath": "ui/race-control-alert-slot.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/race-control-alert-slot/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Control",
       "UUID": "com.iracedeck.sd.core.replay-control",
       "Icon": "imgs/actions/replay-control/icon",

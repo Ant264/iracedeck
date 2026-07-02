@@ -106,6 +106,12 @@
     "graphic1Color": "#ffffff",
     "borderColor": "#bb4a4a"
   },
+  "race-control-alert-slot": {
+    "backgroundColor": "#2a3444",
+    "textColor": "#ffffff",
+    "graphic1Color": "#888888",
+    "borderColor": "#556677"
+  },
   "replay-control": {
     "backgroundColor": "#2a3a4a",
     "textColor": "#ffffff",

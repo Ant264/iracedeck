@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Race control alert slot placeholder key icon: dark background with RC ALERT label -->
+  <rect width="72" height="72" rx="4" fill="#2a3444"/>
+  <text x="36" y="24" text-anchor="middle" fill="#888888" font-size="9" font-family="Arial" font-weight="700">RC</text>
+  <text x="36" y="37" text-anchor="middle" fill="#888888" font-size="9" font-family="Arial" font-weight="700">ALERT</text>
+  <text x="36" y="51" text-anchor="middle" fill="#555555" font-size="8" font-family="Arial">SLOT</text>
+  <!-- Alert indicator triangle (inactive style) -->
+  <polygon points="36,55 31,63 41,63" fill="none" stroke="#555555" stroke-width="1.5" stroke-linejoin="round"/>
+  <rect x="35.2" y="57.5" width="1.6" height="3.5" rx="0.8" fill="#555555"/>
+  <circle cx="36" cy="62" r="0.8" fill="#555555"/>
+</svg>

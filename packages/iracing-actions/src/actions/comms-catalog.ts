@@ -463,6 +463,11 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     ...allApi(["start-recording", "stop-recording", "restart-recording"]),
   }),
 
+  "race-control-alert-slot": entry("actionMode", {
+    standard: api,
+    instant: chat,
+  }),
+
   "race-admin": entry(
     "mode",
     allChat([

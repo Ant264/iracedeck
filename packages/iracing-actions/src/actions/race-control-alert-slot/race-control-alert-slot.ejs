@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <%- include('head-common') %>
+  </head>
+  <body>
+    <%- include('section-header', { title: 'Action Settings' }) %>
+
+    <!-- Slot Index -->
+    <sdpi-item label="Alert Slot">
+      <sdpi-select setting="slotIndex" default="0">
+        <option value="0">Slot 0 (highest priority)</option>
+        <option value="1">Slot 1</option>
+        <option value="2">Slot 2</option>
+        <option value="3">Slot 3</option>
+        <option value="4">Slot 4</option>
+        <option value="5">Slot 5</option>
+        <option value="6">Slot 6</option>
+        <option value="7">Slot 7</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <!-- Alert Type Filter -->
+    <sdpi-item label="Show Alerts">
+      <sdpi-select setting="alertType" default="any">
+        <option value="any">Any alert</option>
+        <option value="blackFlag">Black flag only</option>
+        <option value="waveAround">Wave-around only</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <!-- Action Mode -->
+    <sdpi-item label="Action Mode">
+      <sdpi-select setting="actionMode" default="standard">
+        <option value="standard">Standard (select reference car)</option>
+        <option value="instant">Instant (!clear / !waveby)</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <%- include('title-overrides') %>
+    <%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['race-control-alert-slot'] }) %>
+    <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['race-control-alert-slot'] }) %>
+    <%- include('graphic-overrides') %>
+    <%- include('common-settings') %>
+
+    <%- include('section-header', { title: 'Global Settings' }) %>
+
+    <%- include('global-title-defaults') %>
+    <%- include('global-color-defaults') %>
+    <%- include('global-border-defaults') %>
+    <%- include('global-graphic-defaults') %>
+    <%- include('global-common-settings') %>
+
+    <%- include('docs-link') %>
+    <%- include('version') %>
+  </body>
+</html>

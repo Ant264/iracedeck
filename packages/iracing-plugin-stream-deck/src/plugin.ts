@@ -113,7 +113,9 @@ import {
   PitCrew,
   PitQuickActions,
   RACE_ADMIN_UUID,
+  RACE_CONTROL_ALERT_SLOT_UUID,
   RaceAdmin,
+  RaceControlAlertSlot,
   REPLAY_CONTROL_UUID,
   REPLAY_NAVIGATION_UUID,
   REPLAY_SPEED_UUID,
@@ -788,6 +790,10 @@ adapter.registerAction(MEDIA_CAPTURE_UUID, new MediaCapture(adapter.createLogger
 adapter.registerAction(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew")));
 adapter.registerAction(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
 adapter.registerAction(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
+adapter.registerAction(
+  RACE_CONTROL_ALERT_SLOT_UUID,
+  new RaceControlAlertSlot(adapter.createLogger("RaceControlAlertSlot")),
+);
 adapter.registerAction(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));
 adapter.registerAction(REPLAY_NAVIGATION_UUID, new ReplayNavigation(adapter.createLogger("ReplayNavigation")));
 adapter.registerAction(REPLAY_SPEED_UUID, new ReplaySpeed(adapter.createLogger("ReplaySpeed")));

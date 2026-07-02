@@ -2174,6 +2174,17 @@
       "method": "api"
     }
   },
+  "race-control-alert-slot": {
+    "_meta": {
+      "modeSetting": "actionMode"
+    },
+    "standard": {
+      "method": "api"
+    },
+    "instant": {
+      "method": "chat"
+    }
+  },
   "race-admin": {
     "_meta": {
       "modeSetting": "mode"

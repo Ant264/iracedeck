@@ -341,6 +341,21 @@
       }
     },
     {
+      "Name": "Race Control Alert Slot",
+      "UUID": "com.iracedeck.sd.core.race-control-alert-slot",
+      "Icon": "imgs/actions/race-control-alert-slot/icon",
+      "Tooltip": "Alert-driven race-control slot that can select a driver or send instant clear/waveby commands",
+      "PropertyInspectorPath": "ui/race-control-alert-slot.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/race-control-alert-slot/key"
+        }
+      ]
+    },
+    {
       "Name": "Replay Control",
       "UUID": "com.iracedeck.sd.core.replay-control",
       "Icon": "imgs/actions/replay-control/icon",
