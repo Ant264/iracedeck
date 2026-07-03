@@ -442,7 +442,7 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
     const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { attentionBorderContent?: string } | undefined;
 
     expect(call?.attentionBorderContent).toContain("<rect");
-    expect(call?.attentionBorderContent).toContain("#e67e22");
+    expect(call?.attentionBorderContent).toContain("#1a1a1a");
   });
 
   it("passes a non-empty attentionBorderContent to assembleIcon for waveAround state", () => {
@@ -460,6 +460,23 @@ describe("generateSplitsDeltaCycleSvg attentionState", () => {
 
     expect(call?.attentionBorderContent).toContain("<rect");
     expect(call?.attentionBorderContent).toContain("#3498db");
+  });
+
+  it("renders laps-down badge text in select-reference-car wave-around state", () => {
+    generateSplitsDeltaCycleSvg(
+      { mode: "select-reference-car", direction: "next", slotIndex: 0 },
+      false,
+      "42",
+      false,
+      undefined,
+      undefined,
+      "waveAroundPending",
+      2,
+    );
+
+    const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { graphicSvg?: string } | undefined;
+
+    expect(call?.graphicSvg).toContain("-2L");
   });
 
   it("passes empty attentionBorderContent for none state", () => {

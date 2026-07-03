@@ -202,6 +202,26 @@ describe("updateAlertQueue — wave-around detection", () => {
     expect(getAlertForSlot(0, "waveAround")?.carIdx).toBe(2);
     expect(getAlertForSlot(1, "waveAround")?.carIdx).toBe(1);
   });
+
+  it("exposes whole laps-down count for wave-around alerts", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" },
+      { carIdx: 1, carNumber: "77" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, 0],
+        CarIdxLap: [7, 5],
+        CarIdxLapDistPct: [0.0, 0.0],
+      }),
+    );
+
+    expect(getAlertForSlot(0, "waveAround")?.lapsDown).toBe(2);
+  });
 });
 
 describe("updateAlertQueue — meatball detection", () => {
@@ -610,5 +630,44 @@ describe("getAlertForSlot", () => {
     markWaveAroundCommandSent(alert?.key ?? "");
 
     expect(getAlertForSlot(0, "waveAround")?.waveCommandSent).toBe(true);
+  });
+
+  it("returns wave-around to pending when laps-down decreases after command sent", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" },
+      { carIdx: 1, carNumber: "22" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, 0],
+        CarIdxLap: [7, 5],
+        CarIdxLapDistPct: [0.0, 0.0],
+      }),
+    );
+
+    const sentAlert = getAlertForSlot(0, "waveAround");
+    expect(sentAlert?.lapsDown).toBe(2);
+    markWaveAroundCommandSent(sentAlert?.key ?? "");
+    expect(getAlertForSlot(0, "waveAround")?.waveCommandSent).toBe(true);
+
+    // Car catches one lap (still lap down), so sent state should reset.
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 2,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, 0],
+        CarIdxLap: [7, 6],
+        CarIdxLapDistPct: [0.0, 0.0],
+      }),
+    );
+
+    const pendingAgain = getAlertForSlot(0, "waveAround");
+    expect(pendingAgain?.lapsDown).toBe(1);
+    expect(pendingAgain?.waveCommandSent).toBe(false);
   });
 });

@@ -165,6 +165,7 @@ describe("generateRaceControlAlertSlotSvg", () => {
       undefined,
       undefined,
       "none",
+      undefined,
     );
   });
 
@@ -181,6 +182,7 @@ describe("generateRaceControlAlertSlotSvg", () => {
       undefined,
       alert.car,
       "blackFlag",
+      undefined,
     );
   });
 
@@ -214,6 +216,17 @@ describe("generateRaceControlAlertSlotSvg", () => {
 
     const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
     expect(args?.[6]).toBe("waveAround");
+  });
+
+  it("passes laps-down count for wave-around alerts", () => {
+    generateRaceControlAlertSlotSvg(
+      baseSettings,
+      makeAlert({ key: "waveAround:5", type: "waveAround", lapsDown: 2 }),
+      false,
+    );
+
+    const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
+    expect(args?.[7]).toBe(2);
   });
 
   it("uses the same orange highlight state as select-reference-car for meatball", () => {

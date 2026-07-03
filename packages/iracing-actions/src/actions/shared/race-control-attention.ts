@@ -154,14 +154,29 @@ export function getCarRaceProgress(carIdx: number, telemetry: TelemetryData | nu
  * @internal Exported for testing
  */
 export function isLapDown(carIdx: number, telemetry: TelemetryData | null): boolean {
+  return (getLapsDown(carIdx, telemetry) ?? 0) >= 1;
+}
+
+/**
+ * Returns the whole-number lap deficit to leader for `carIdx`.
+ *
+ * - `0` means same lap as leader (or less than one full lap behind).
+ * - `1` means one lap down.
+ * - `2` means two laps down, etc.
+ *
+ * Returns `undefined` when race progress cannot be determined.
+ *
+ * @internal Exported for testing
+ */
+export function getLapsDown(carIdx: number, telemetry: TelemetryData | null): number | undefined {
   const carProgress = getCarRaceProgress(carIdx, telemetry);
 
-  if (carProgress === undefined) return false;
+  if (carProgress === undefined) return undefined;
 
   const laps = telemetry?.CarIdxLap;
   const dists = telemetry?.CarIdxLapDistPct;
 
-  if (!laps || !dists) return false;
+  if (!laps || !dists) return undefined;
 
   const count = Math.min(laps.length, dists.length);
   let leaderProgress = -Infinity;
@@ -172,9 +187,13 @@ export function isLapDown(carIdx: number, telemetry: TelemetryData | null): bool
     if (p !== undefined && p > leaderProgress) leaderProgress = p;
   }
 
-  if (!Number.isFinite(leaderProgress)) return false;
+  if (!Number.isFinite(leaderProgress)) return undefined;
 
-  return leaderProgress - carProgress >= LAP_DOWN_THRESHOLD;
+  const deficit = leaderProgress - carProgress;
+
+  if (deficit < LAP_DOWN_THRESHOLD) return 0;
+
+  return Math.max(1, Math.floor(deficit + 1e-9));
 }
 
 /**
@@ -187,7 +206,7 @@ export function isLapDown(carIdx: number, telemetry: TelemetryData | null): bool
  * @internal Exported for testing
  */
 export function needsWaveAround(carIdx: number, telemetry: TelemetryData | null): boolean {
-  return isCautionActive(telemetry) && isLapDown(carIdx, telemetry);
+  return isCautionActive(telemetry) && (getLapsDown(carIdx, telemetry) ?? 0) >= 1;
 }
 
 /**

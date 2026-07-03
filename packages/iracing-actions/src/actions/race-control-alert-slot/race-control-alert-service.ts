@@ -21,7 +21,13 @@
 import { type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ActiveSessionCar } from "@iracedeck/iracing-sdk";
 
-import { hasBlackFlag, hasDisqualifyFlag, hasMeatballFlag, needsWaveAround } from "../shared/race-control-attention.js";
+import {
+  getLapsDown,
+  hasBlackFlag,
+  hasDisqualifyFlag,
+  hasMeatballFlag,
+  needsWaveAround,
+} from "../shared/race-control-attention.js";
 import { buildSessionRoster, type SessionRosterState } from "../shared/session-roster.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +52,8 @@ export interface RaceControlAlert {
   readonly leaderboardPosition?: number;
   /** `true` after a wave-by command has been sent for this wave-around alert. */
   readonly waveCommandSent?: boolean;
+  /** Whole laps behind leader for wave-around alerts (1 = one lap down). */
+  readonly lapsDown?: number;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -62,11 +70,13 @@ const GRACE_PERIOD_MS = 2000;
 /**
  * Internal alert entry (superset of the public {@link RaceControlAlert}).
  */
-interface AlertEntry extends Omit<RaceControlAlert, "leaderboardPosition" | "waveCommandSent"> {
+interface AlertEntry extends Omit<RaceControlAlert, "leaderboardPosition" | "waveCommandSent" | "lapsDown"> {
   /** 1-based leaderboard position (`CarIdxPosition`) when known. */
   leaderboardPosition?: number;
   /** `true` after a wave-by command has been sent for this wave-around alert. */
   waveCommandSent?: boolean;
+  /** Whole laps behind leader (for wave-around entries). */
+  lapsDown?: number;
   /**
    * Wall-clock ms when the condition was last observed as cleared.
    * `undefined` = condition is currently active.
@@ -80,8 +90,8 @@ let alertQueue: AlertEntry[] = [];
 let rosterState: SessionRosterState = { carList: [], knownSet: new Set(), lastKey: null };
 /** Last `SessionTick` value seen — used to skip redundant per-car scans. */
 let lastProcessedTick = -1;
-/** Keys of wave-around alerts that have already sent a wave-by command. */
-let sentWaveAroundKeys = new Set<string>();
+/** Wave-around alert keys mapped to laps-down at time of !waveby send. */
+let sentWaveAroundLapsDownByKey = new Map<string, number>();
 
 function getLeaderboardPosition(carIdx: number, telemetry: TelemetryData | null): number | undefined {
   const positions = telemetry?.CarIdxPosition;
@@ -210,8 +220,21 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
   // 4. Re-activate entries whose condition has returned within the grace window
   for (const entry of alertQueue) {
     if (entry.type === "waveAround") {
+      const currentLapsDown = getLapsDown(entry.carIdx, telemetry);
+      const sentAtLapsDown = sentWaveAroundLapsDownByKey.get(entry.key);
+
+      if (
+        sentAtLapsDown !== undefined &&
+        currentLapsDown !== undefined &&
+        Number.isFinite(sentAtLapsDown) &&
+        currentLapsDown < sentAtLapsDown
+      ) {
+        sentWaveAroundLapsDownByKey.delete(entry.key);
+      }
+
       entry.leaderboardPosition = getLeaderboardPosition(entry.carIdx, telemetry);
-      entry.waveCommandSent = sentWaveAroundKeys.has(entry.key);
+      entry.waveCommandSent = sentWaveAroundLapsDownByKey.has(entry.key);
+      entry.lapsDown = currentLapsDown;
     }
 
     if (entry.clearingAt !== undefined && activeKeys.has(entry.key)) {
@@ -235,9 +258,9 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
 
   const queueKeys = new Set(alertQueue.map((e) => e.key));
 
-  for (const key of [...sentWaveAroundKeys]) {
+  for (const key of [...sentWaveAroundLapsDownByKey.keys()]) {
     if (!queueKeys.has(key)) {
-      sentWaveAroundKeys.delete(key);
+      sentWaveAroundLapsDownByKey.delete(key);
     }
   }
 
@@ -264,7 +287,8 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
       car,
       detectedAt: now,
       leaderboardPosition: typeStr === "waveAround" ? getLeaderboardPosition(carIdxNum, telemetry) : undefined,
-      waveCommandSent: typeStr === "waveAround" ? sentWaveAroundKeys.has(key) : undefined,
+      waveCommandSent: typeStr === "waveAround" ? sentWaveAroundLapsDownByKey.has(key) : undefined,
+      lapsDown: typeStr === "waveAround" ? getLapsDown(carIdxNum, telemetry) : undefined,
     };
 
     const idx = findInsertIndex(alertQueue, typeStr);
@@ -321,9 +345,9 @@ export function getAlertForSlot(
 export function markWaveAroundCommandSent(alertKey: string): void {
   if (!alertKey.startsWith("waveAround:")) return;
 
-  sentWaveAroundKeys.add(alertKey);
-
   const entry = alertQueue.find((e) => e.key === alertKey && e.type === "waveAround");
+
+  sentWaveAroundLapsDownByKey.set(alertKey, entry?.lapsDown ?? Number.MAX_SAFE_INTEGER);
 
   if (!entry) return;
 
@@ -349,5 +373,5 @@ export function resetAlertService(): void {
   alertQueue = [];
   rosterState = { carList: [], knownSet: new Set(), lastKey: null };
   lastProcessedTick = -1;
-  sentWaveAroundKeys = new Set<string>();
+  sentWaveAroundLapsDownByKey = new Map<string, number>();
 }

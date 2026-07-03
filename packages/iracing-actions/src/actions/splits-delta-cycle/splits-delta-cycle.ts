@@ -310,6 +310,7 @@ export function generateSplitsDeltaCycleSvg(
   accentColor?: string,
   car?: ActiveSessionCar,
   attentionState: RaceControlAttentionState = "none",
+  lapsDown?: number,
 ): string {
   const { mode, direction } = settings;
 
@@ -357,6 +358,13 @@ export function generateSplitsDeltaCycleSvg(
           })[c] ?? c,
       );
     const escapedBottom = escapeText(bottomLine);
+    const waveAroundBadgeText =
+      (attentionState === "waveAround" || attentionState === "waveAroundPending") &&
+      lapsDown !== undefined &&
+      Number.isFinite(lapsDown) &&
+      lapsDown >= 1
+        ? escapeText(`-${lapsDown}L`)
+        : undefined;
 
     const nameLines = (() => {
       if (!topLine) return [] as string[];
@@ -377,7 +385,11 @@ export function generateSplitsDeltaCycleSvg(
           ? `<text x="72" y="62" text-anchor="middle" fill="{{textColor}}" font-size="24" font-family="Arial" font-weight="700">${nameLines[0]}</text>`
           : `<text x="72" y="48" text-anchor="middle" fill="{{textColor}}" font-size="20" font-family="Arial" font-weight="700">${nameLines[0]}</text><text x="72" y="72" text-anchor="middle" fill="{{textColor}}" font-size="20" font-family="Arial" font-weight="700">${nameLines[1]}</text>`;
 
-    const selectRefTextGraphic = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">${topText}<text x="72" y="130" text-anchor="middle" fill="{{textColor}}" font-size="51" font-family="Arial" font-weight="800">${escapedBottom}</text></svg>`;
+    const waveAroundBadge = waveAroundBadgeText
+      ? `<text x="134" y="24" text-anchor="end" fill="{{textColor}}" font-size="18" font-family="Arial" font-weight="800">${waveAroundBadgeText}</text>`
+      : "";
+
+    const selectRefTextGraphic = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">${waveAroundBadge}${topText}<text x="72" y="130" text-anchor="middle" fill="{{textColor}}" font-size="51" font-family="Arial" font-weight="800">${escapedBottom}</text></svg>`;
 
     const title = {
       showTitle: false,

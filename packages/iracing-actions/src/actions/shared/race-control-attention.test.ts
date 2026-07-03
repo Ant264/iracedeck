@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAttentionBorderSvg,
   getCarRaceProgress,
+  getLapsDown,
   getRaceControlAttentionState,
   hasBlackFlag,
   hasDisqualifyFlag,
@@ -201,6 +202,39 @@ describe("isLapDown", () => {
       CarIdxLapDistPct: [0.97, 0.0], // leader at 5.97, target at 5.0 — diff 0.97 >= 0.95
     });
     expect(isLapDown(1, t)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getLapsDown
+// ---------------------------------------------------------------------------
+describe("getLapsDown", () => {
+  it("returns undefined when telemetry is null", () => {
+    expect(getLapsDown(0, null)).toBeUndefined();
+  });
+
+  it("returns 0 when car is on lead lap", () => {
+    const t = mkTelemetry({
+      CarIdxLap: [5, 5],
+      CarIdxLapDistPct: [0.4, 0.1], // diff 0.3 < 0.95 threshold
+    });
+    expect(getLapsDown(1, t)).toBe(0);
+  });
+
+  it("returns 1 for one lap down", () => {
+    const t = mkTelemetry({
+      CarIdxLap: [6, 5],
+      CarIdxLapDistPct: [0.0, 0.0],
+    });
+    expect(getLapsDown(1, t)).toBe(1);
+  });
+
+  it("returns 2 for two laps down", () => {
+    const t = mkTelemetry({
+      CarIdxLap: [7, 5],
+      CarIdxLapDistPct: [0.0, 0.0],
+    });
+    expect(getLapsDown(1, t)).toBe(2);
   });
 });
 

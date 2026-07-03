@@ -88,12 +88,13 @@ export function generateRaceControlAlertSlotSvg(
     undefined,
     alert?.car,
     attentionState,
+    alert?.lapsDown,
   );
 }
 
 export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControlAlertSlotSettings> {
   private activeContexts = new Map<string, RaceControlAlertSlotSettings>();
-  private lastRenderedAlertKeys = new Map<string, string | null>();
+  private lastRenderedAlertSignatures = new Map<string, string>();
   private selectedCarUnsubscribers = new Map<string, () => void>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<RaceControlAlertSlotSettings>): Promise<void> {
@@ -104,9 +105,9 @@ export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControl
 
     // Seed from current session to avoid waiting for the next telemetry tick.
     updateAlertQueue(this.sdkController.getSessionInfo(), null);
-    const { svg, alertKey } = this.buildDisplayState(settings);
+    const { svg, alertSignature } = this.buildDisplayState(settings);
 
-    this.lastRenderedAlertKeys.set(ev.action.id, alertKey);
+    this.lastRenderedAlertSignatures.set(ev.action.id, alertSignature);
     await this.setKeyImage(ev, svg);
     this.setRegenerateCallback(ev.action.id, () => {
       const latestAlert = getAlertForSlot(settings.slotIndex, settings.alertType);
@@ -141,7 +142,7 @@ export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControl
     this.selectedCarUnsubscribers.get(ev.action.id)?.();
     this.selectedCarUnsubscribers.delete(ev.action.id);
     this.activeContexts.delete(ev.action.id);
-    this.lastRenderedAlertKeys.delete(ev.action.id);
+    this.lastRenderedAlertSignatures.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<RaceControlAlertSlotSettings>): Promise<void> {
@@ -183,9 +184,9 @@ export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControl
   }
 
   private async updateDisplay(contextId: string, settings: RaceControlAlertSlotSettings): Promise<void> {
-    const { svg, alertKey } = this.buildDisplayState(settings);
+    const { svg, alertSignature } = this.buildDisplayState(settings);
 
-    this.lastRenderedAlertKeys.set(contextId, alertKey);
+    this.lastRenderedAlertSignatures.set(contextId, alertSignature);
     await this.updateKeyImage(contextId, svg);
     this.setRegenerateCallback(contextId, () => {
       const latestAlert = getAlertForSlot(settings.slotIndex, settings.alertType);
@@ -195,24 +196,30 @@ export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControl
     });
   }
 
-  private buildDisplayState(settings: RaceControlAlertSlotSettings): { svg: string; alertKey: string | null } {
+  private buildDisplayState(settings: RaceControlAlertSlotSettings): { svg: string; alertSignature: string } {
     const alert = getAlertForSlot(settings.slotIndex, settings.alertType);
     const isSelected = alert ? getSelectedCar()?.carIdx === alert.carIdx : false;
 
     return {
       svg: generateRaceControlAlertSlotSvg(settings, alert, isSelected),
-      alertKey: alert?.key ?? null,
+      alertSignature: this.buildAlertSignature(alert),
     };
   }
 
   private checkAlertChange(contextId: string, settings: RaceControlAlertSlotSettings): void {
     const alert = getAlertForSlot(settings.slotIndex, settings.alertType);
-    const prevKey = this.lastRenderedAlertKeys.get(contextId) ?? null;
-    const newKey = alert?.key ?? null;
+    const prevSignature = this.lastRenderedAlertSignatures.get(contextId) ?? "";
+    const newSignature = this.buildAlertSignature(alert);
 
-    if (newKey === prevKey) return;
+    if (newSignature === prevSignature) return;
 
     void this.updateDisplay(contextId, settings);
+  }
+
+  private buildAlertSignature(alert: RaceControlAlert | null): string {
+    if (!alert) return "";
+
+    return `${alert.key}|${alert.waveCommandSent === true ? "1" : "0"}|${alert.lapsDown ?? ""}`;
   }
 
   private async sendInstantAlertCommand(alert: RaceControlAlert): Promise<void> {
