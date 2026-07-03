@@ -4,13 +4,31 @@ import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
  * Describes the Race Control attention state for a car slot button.
  *
  * - `"none"` – no attention required.
+ * - `"disqualify"` – car has an active disqualify flag via `CarIdxSessionFlags`.
  * - `"blackFlag"` – car has an active black flag via `CarIdxSessionFlags`.
+ * - `"meatball"` – car has an active meatball/damage flag via `CarIdxSessionFlags`.
  * - `"waveAround"` – car is at least 1 lap down under a caution/yellow.
- * - `"both"` – both conditions are true simultaneously.
  *
  * @internal Exported for testing
  */
-export type RaceControlAttentionState = "none" | "blackFlag" | "waveAround" | "both";
+export type RaceControlAttentionState = "none" | "disqualify" | "blackFlag" | "meatball" | "waveAround";
+
+/**
+ * Returns `true` when the car at `carIdx` has an active disqualify flag set
+ * in the per-car session flags bitfield (`CarIdxSessionFlags`).
+ *
+ * Safe: returns `false` when `telemetry` is null, `CarIdxSessionFlags` is
+ * absent, or `carIdx` is out of range.
+ *
+ * @internal Exported for testing
+ */
+export function hasDisqualifyFlag(carIdx: number, telemetry: TelemetryData | null): boolean {
+  const flags = telemetry?.CarIdxSessionFlags;
+
+  if (!flags || carIdx < 0 || carIdx >= flags.length) return false;
+
+  return hasFlag(flags[carIdx], Flags.Disqualify);
+}
 
 /**
  * Returns `true` when the car at `carIdx` has an active black flag set in
@@ -26,7 +44,28 @@ export function hasBlackFlag(carIdx: number, telemetry: TelemetryData | null): b
 
   if (!flags || carIdx < 0 || carIdx >= flags.length) return false;
 
-  return hasFlag(flags[carIdx], Flags.Black);
+  // Disqualify is rendered separately; suppress black when both bits are set.
+  return hasFlag(flags[carIdx], Flags.Black) && !hasFlag(flags[carIdx], Flags.Disqualify);
+}
+
+/**
+ * Returns `true` when the car at `carIdx` has an active meatball/damage flag
+ * set in the per-car session flags bitfield (`CarIdxSessionFlags`).
+ *
+ * Meatball maps to the `Repair` bit. `Servicible` is not a meatball signal
+ * and can be broadly set, so it must not drive attention borders.
+ *
+ * Safe: returns `false` when `telemetry` is null, `CarIdxSessionFlags` is
+ * absent, or `carIdx` is out of range.
+ *
+ * @internal Exported for testing
+ */
+export function hasMeatballFlag(carIdx: number, telemetry: TelemetryData | null): boolean {
+  const flags = telemetry?.CarIdxSessionFlags;
+
+  if (!flags || carIdx < 0 || carIdx >= flags.length) return false;
+
+  return hasFlag(flags[carIdx], Flags.Repair);
 }
 
 /**
@@ -157,58 +196,57 @@ export function getRaceControlAttentionState(
   carIdx: number,
   telemetry: TelemetryData | null,
 ): RaceControlAttentionState {
+  const disqualify = hasDisqualifyFlag(carIdx, telemetry);
   const blackFlag = hasBlackFlag(carIdx, telemetry);
+  const meatball = hasMeatballFlag(carIdx, telemetry);
   const waveAround = needsWaveAround(carIdx, telemetry);
 
-  if (blackFlag && waveAround) return "both";
+  // Priority: disqualify > black > meatball > wave-around.
+  if (disqualify) return "disqualify";
 
   if (blackFlag) return "blackFlag";
+
+  if (meatball) return "meatball";
 
   if (waveAround) return "waveAround";
 
   return "none";
 }
 
-/** Orange colour used for black-flag and combined (`"both"`) attention borders. */
-const BLACK_FLAG_COLOR = "#e67e22";
+/** Dark border used for black-flag attention. */
+const BLACK_FLAG_COLOR = "#1a1a1a";
+/** Orange border used for meatball attention. */
+const MEATBALL_COLOR = "#e67e22";
 /** Blue colour used for wave-around attention borders. */
 const WAVE_AROUND_COLOR = "#3498db";
-/** Stroke width for the attention border — thicker than the default selected border (7 px). */
-const ATTENTION_BORDER_WIDTH = 11;
-/** Inset from the canvas edge = stroke-width / 2 (centres the stroke on the rect path). */
-const ATTENTION_BORDER_INSET = ATTENTION_BORDER_WIDTH / 2;
-/** Corner radius, derived from the 24 px canvas rx. */
-const ATTENTION_BORDER_RX = Math.max(0, 24 - ATTENTION_BORDER_INSET);
-/** Rect size = 144 − 2 × inset. */
-const ATTENTION_BORDER_SIZE = 144 - 2 * ATTENTION_BORDER_INSET;
+/** Inset for the inner attention fill so the normal border remains visible. */
+const ATTENTION_FILL_INSET = 10;
+/** Corner radius for the inner attention fill. */
+const ATTENTION_FILL_RX = 12;
+/** Size of the inner attention fill rect. */
+const ATTENTION_FILL_SIZE = 144 - 2 * ATTENTION_FILL_INSET;
 
 /**
- * Returns a raw SVG `<rect>` fragment representing the attention border for
+ * Returns a raw SVG fragment representing the attention overlay for
  * the given state, or `""` for `"none"`.
  *
  * The fragment is intended to be placed in the `{{attentionBorderContent}}`
- * slot of `ICON_BASE_TEMPLATE`, which renders it below the selected-green
- * border so the green border always takes visual precedence.
- *
- * For `"both"`, the black-flag (orange) colour is used — highest-priority
- * wins, keeping v1 simple.
+ * slot of `ICON_BASE_TEMPLATE`, which renders it below the normal border and
+ * graphic layers so the border remains visible.
  *
  * @internal Exported for testing
  */
 export function getAttentionBorderSvg(state: RaceControlAttentionState): string {
-  let color: string;
-
   switch (state) {
     case "none":
       return "";
+    case "disqualify":
+      return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${BLACK_FLAG_COLOR}"/><line x1="28" y1="22" x2="116" y2="110" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><line x1="116" y1="22" x2="28" y2="110" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>`;
     case "blackFlag":
-    case "both":
-      color = BLACK_FLAG_COLOR;
-      break;
+      return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${BLACK_FLAG_COLOR}"/>`;
+    case "meatball":
+      return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${BLACK_FLAG_COLOR}"/><circle cx="72" cy="72" r="20" fill="${MEATBALL_COLOR}"/>`;
     case "waveAround":
-      color = WAVE_AROUND_COLOR;
-      break;
+      return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${WAVE_AROUND_COLOR}"/>`;
   }
-
-  return `<rect x="${ATTENTION_BORDER_INSET}" y="${ATTENTION_BORDER_INSET}" width="${ATTENTION_BORDER_SIZE}" height="${ATTENTION_BORDER_SIZE}" rx="${ATTENTION_BORDER_RX}" fill="none" stroke="${color}" stroke-width="${ATTENTION_BORDER_WIDTH}"/>`;
 }

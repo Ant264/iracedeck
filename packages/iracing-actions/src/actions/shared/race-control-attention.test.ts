@@ -3,13 +3,36 @@ import { Flags } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  getAttentionBorderSvg,
   getCarRaceProgress,
   getRaceControlAttentionState,
   hasBlackFlag,
+  hasDisqualifyFlag,
+  hasMeatballFlag,
   isCautionActive,
   isLapDown,
   needsWaveAround,
 } from "./race-control-attention.js";
+
+// ---------------------------------------------------------------------------
+// hasDisqualifyFlag
+// ---------------------------------------------------------------------------
+describe("hasDisqualifyFlag", () => {
+  it("returns false when telemetry is null", () => {
+    expect(hasDisqualifyFlag(0, null)).toBe(false);
+  });
+
+  it("returns false when CarIdxSessionFlags is absent", () => {
+    expect(hasDisqualifyFlag(0, mkTelemetry({}))).toBe(false);
+  });
+
+  it("returns true when the Disqualify flag bit is set for the car", () => {
+    const telemetry = mkTelemetry({ CarIdxSessionFlags: [0, Flags.Disqualify, 0] });
+    expect(hasDisqualifyFlag(1, telemetry)).toBe(true);
+    expect(hasDisqualifyFlag(0, telemetry)).toBe(false);
+    expect(hasDisqualifyFlag(2, telemetry)).toBe(false);
+  });
+});
 
 /** Minimal TelemetryData builder to keep tests concise. */
 function mkTelemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
@@ -49,6 +72,31 @@ describe("hasBlackFlag", () => {
     const combined = Flags.Black | Flags.Yellow;
     const telemetry = mkTelemetry({ CarIdxSessionFlags: [combined] });
     expect(hasBlackFlag(0, telemetry)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasMeatballFlag
+// ---------------------------------------------------------------------------
+describe("hasMeatballFlag", () => {
+  it("returns false when telemetry is null", () => {
+    expect(hasMeatballFlag(0, null)).toBe(false);
+  });
+
+  it("returns false when CarIdxSessionFlags is absent", () => {
+    expect(hasMeatballFlag(0, mkTelemetry({}))).toBe(false);
+  });
+
+  it("returns true when the Repair flag bit is set for the car", () => {
+    const telemetry = mkTelemetry({ CarIdxSessionFlags: [0, Flags.Repair, 0] });
+    expect(hasMeatballFlag(1, telemetry)).toBe(true);
+    expect(hasMeatballFlag(0, telemetry)).toBe(false);
+    expect(hasMeatballFlag(2, telemetry)).toBe(false);
+  });
+
+  it("returns false when only the Servicible flag bit is set for the car", () => {
+    const telemetry = mkTelemetry({ CarIdxSessionFlags: [0, Flags.Servicible, 0] });
+    expect(hasMeatballFlag(1, telemetry)).toBe(false);
   });
 });
 
@@ -212,6 +260,16 @@ describe("getRaceControlAttentionState", () => {
     expect(getRaceControlAttentionState(1, t)).toBe("blackFlag");
   });
 
+  it("returns 'disqualify' when disqualify is present", () => {
+    const t = mkTelemetry({
+      SessionFlags: Flags.Green,
+      CarIdxSessionFlags: [0, Flags.Disqualify],
+      CarIdxLap: [5, 5],
+      CarIdxLapDistPct: [0.5, 0.4],
+    });
+    expect(getRaceControlAttentionState(1, t)).toBe("disqualify");
+  });
+
   it("returns 'waveAround' when only wave-around conditions are met", () => {
     const t = mkTelemetry({
       SessionFlags: Flags.Yellow,
@@ -222,17 +280,94 @@ describe("getRaceControlAttentionState", () => {
     expect(getRaceControlAttentionState(1, t)).toBe("waveAround");
   });
 
-  it("returns 'both' when black flag and wave-around are both present", () => {
+  it("returns 'meatball' when only meatball condition is present", () => {
+    const t = mkTelemetry({
+      SessionFlags: Flags.Green,
+      CarIdxSessionFlags: [0, Flags.Repair],
+      CarIdxLap: [5, 5],
+      CarIdxLapDistPct: [0.5, 0.4],
+    });
+    expect(getRaceControlAttentionState(1, t)).toBe("meatball");
+  });
+
+  it("returns 'blackFlag' when black flag and wave-around are both present", () => {
     const t = mkTelemetry({
       SessionFlags: Flags.Yellow,
       CarIdxSessionFlags: [0, Flags.Black],
       CarIdxLap: [6, 5],
       CarIdxLapDistPct: [0.0, 0.0],
     });
-    expect(getRaceControlAttentionState(1, t)).toBe("both");
+    expect(getRaceControlAttentionState(1, t)).toBe("blackFlag");
+  });
+
+  it("returns 'blackFlag' when black flag and meatball are both present", () => {
+    const t = mkTelemetry({
+      SessionFlags: Flags.Green,
+      CarIdxSessionFlags: [0, Flags.Black | Flags.Repair],
+      CarIdxLap: [5, 5],
+      CarIdxLapDistPct: [0.5, 0.4],
+    });
+    expect(getRaceControlAttentionState(1, t)).toBe("blackFlag");
+  });
+
+  it("returns 'disqualify' when disqualify and black are both present", () => {
+    const t = mkTelemetry({
+      SessionFlags: Flags.Green,
+      CarIdxSessionFlags: [0, Flags.Disqualify | Flags.Black],
+      CarIdxLap: [5, 5],
+      CarIdxLapDistPct: [0.5, 0.4],
+    });
+    expect(getRaceControlAttentionState(1, t)).toBe("disqualify");
+  });
+
+  it("returns 'meatball' when meatball and wave-around are both present", () => {
+    const t = mkTelemetry({
+      SessionFlags: Flags.Yellow,
+      CarIdxSessionFlags: [0, Flags.Repair],
+      CarIdxLap: [6, 5],
+      CarIdxLapDistPct: [0.0, 0.0],
+    });
+    expect(getRaceControlAttentionState(1, t)).toBe("meatball");
   });
 
   it("returns 'none' when telemetry is null", () => {
     expect(getRaceControlAttentionState(0, null)).toBe("none");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getAttentionBorderSvg
+// ---------------------------------------------------------------------------
+describe("getAttentionBorderSvg", () => {
+  it("returns empty string for none state", () => {
+    expect(getAttentionBorderSvg("none")).toBe("");
+  });
+
+  it("renders a blue interior fill for wave-around", () => {
+    const svg = getAttentionBorderSvg("waveAround");
+    expect(svg).toContain('fill="#3498db"');
+    expect(svg).toContain("<rect");
+  });
+
+  it("renders a black interior fill for black flag", () => {
+    const svg = getAttentionBorderSvg("blackFlag");
+    expect(svg).toContain('fill="#1a1a1a"');
+    expect(svg).toContain("<rect");
+  });
+
+  it("renders black interior plus white X for disqualify", () => {
+    const svg = getAttentionBorderSvg("disqualify");
+    expect(svg).toContain('fill="#1a1a1a"');
+    expect(svg).toContain('stroke="#ffffff"');
+    expect(svg).toContain("<line");
+    expect(svg).toContain('stroke-width="3"');
+    expect(svg).toContain('x1="116" y1="22" x2="28" y2="110"');
+  });
+
+  it("renders black interior plus orange center marker for meatball", () => {
+    const svg = getAttentionBorderSvg("meatball");
+    expect(svg).toContain('fill="#1a1a1a"');
+    expect(svg).toContain('fill="#e67e22"');
+    expect(svg).toContain("<circle");
   });
 });

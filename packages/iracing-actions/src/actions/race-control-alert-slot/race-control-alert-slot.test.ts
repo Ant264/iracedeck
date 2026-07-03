@@ -170,7 +170,7 @@ describe("generateRaceControlAlertSlotSvg", () => {
     generateRaceControlAlertSlotSvg(baseSettings, alert, false);
 
     expect(mockGenerateSplitsDeltaCycleSvg).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "select-reference-car", slotIndex: 1 }),
+      expect.objectContaining({ mode: "select-reference-car", slotIndex: 1, nameSource: "smartName" }),
       false,
       "88",
       false,
@@ -187,11 +187,25 @@ describe("generateRaceControlAlertSlotSvg", () => {
     expect(args?.[6]).toBe("blackFlag");
   });
 
+  it("uses disqualify highlight state for disqualified alerts", () => {
+    generateRaceControlAlertSlotSvg(baseSettings, makeAlert({ key: "disqualify:5", type: "disqualify" }), false);
+
+    const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
+    expect(args?.[6]).toBe("disqualify");
+  });
+
   it("uses the same blue highlight state as select-reference-car for wave-around", () => {
     generateRaceControlAlertSlotSvg(baseSettings, makeAlert({ key: "waveAround:5", type: "waveAround" }), false);
 
     const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
     expect(args?.[6]).toBe("waveAround");
+  });
+
+  it("uses the same orange highlight state as select-reference-car for meatball", () => {
+    generateRaceControlAlertSlotSvg(baseSettings, makeAlert({ key: "meatball:5", type: "meatball" }), false);
+
+    const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
+    expect(args?.[6]).toBe("meatball");
   });
 });
 
@@ -231,6 +245,28 @@ describe("RaceControlAlertSlot onKeyDown", () => {
     await action.onKeyDown(makeKeyDownEvent({ slotIndex: 0, alertType: "any", actionMode: "instant" }));
 
     expect(mockSendMessage).toHaveBeenCalledWith("!waveby #88");
+    expect(mockApplyReferenceCarSelection).not.toHaveBeenCalled();
+  });
+
+  it("instant mode sends !clear for meatball alerts", async () => {
+    const action = new RaceControlAlertSlot();
+
+    mockGetAlertForSlot.mockReturnValue(makeAlert({ key: "meatball:5", type: "meatball", carNumber: "15" }));
+
+    await action.onKeyDown(makeKeyDownEvent({ slotIndex: 0, alertType: "any", actionMode: "instant" }));
+
+    expect(mockSendMessage).toHaveBeenCalledWith("!clear #15");
+    expect(mockApplyReferenceCarSelection).not.toHaveBeenCalled();
+  });
+
+  it("instant mode sends !clear for disqualified alerts", async () => {
+    const action = new RaceControlAlertSlot();
+
+    mockGetAlertForSlot.mockReturnValue(makeAlert({ key: "disqualify:5", type: "disqualify", carNumber: "77" }));
+
+    await action.onKeyDown(makeKeyDownEvent({ slotIndex: 0, alertType: "any", actionMode: "instant" }));
+
+    expect(mockSendMessage).toHaveBeenCalledWith("!clear #77");
     expect(mockApplyReferenceCarSelection).not.toHaveBeenCalled();
   });
 

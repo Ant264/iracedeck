@@ -51,7 +51,15 @@ export function generateRaceControlAlertSlotSvg(
   isSelected = false,
 ): string {
   const attentionState: RaceControlAttentionState =
-    alert?.type === "blackFlag" ? "blackFlag" : alert?.type === "waveAround" ? "waveAround" : "none";
+    alert?.type === "disqualify"
+      ? "disqualify"
+      : alert?.type === "blackFlag"
+        ? "blackFlag"
+        : alert?.type === "meatball"
+          ? "meatball"
+          : alert?.type === "waveAround"
+            ? "waveAround"
+            : "none";
 
   return generateSplitsDeltaCycleSvg(
     {
@@ -60,7 +68,7 @@ export function generateRaceControlAlertSlotSvg(
       direction: "next",
       slotIndex: settings.slotIndex,
       colorSource: "none",
-      nameSource: "none",
+      nameSource: "smartName",
       flagsOverlay: settings.flagsOverlay,
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
@@ -201,7 +209,7 @@ export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControl
   }
 
   private async sendInstantAlertCommand(alert: RaceControlAlert): Promise<void> {
-    const command = alert.type === "blackFlag" ? `!clear #${alert.carNumber}` : `!waveby #${alert.carNumber}`;
+    const command = alert.type === "waveAround" ? `!waveby #${alert.carNumber}` : `!clear #${alert.carNumber}`;
 
     this.logger.info(`Sending instant alert command for car #${alert.carNumber}`);
     this.logger.debug(`Command: "${command}", alertType: ${alert.type}`);

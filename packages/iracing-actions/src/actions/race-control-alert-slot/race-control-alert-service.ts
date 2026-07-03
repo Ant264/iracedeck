@@ -21,13 +21,13 @@
 import { type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ActiveSessionCar } from "@iracedeck/iracing-sdk";
 
-import { hasBlackFlag, needsWaveAround } from "../shared/race-control-attention.js";
+import { hasBlackFlag, hasDisqualifyFlag, hasMeatballFlag, needsWaveAround } from "../shared/race-control-attention.js";
 import { buildSessionRoster, type SessionRosterState } from "../shared/session-roster.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-/** The two alert types this service tracks. */
-export type AlertType = "blackFlag" | "waveAround";
+/** The alert types this service tracks. */
+export type AlertType = "disqualify" | "blackFlag" | "meatball" | "waveAround";
 
 /** Public shape of an alert returned to callers via {@link getAlertForSlot}. */
 export interface RaceControlAlert {
@@ -77,9 +77,9 @@ let lastProcessedTick = -1;
 
 /**
  * Find the index at which a new alert entry should be inserted to maintain the
- * priority ordering (black flags before wave-arounds). New black-flag entries
- * are placed immediately after the last existing black-flag entry; new
- * wave-around entries are appended at the tail.
+ * priority ordering (disqualify, black flags, meatballs, then wave-arounds).
+ * New entries are placed immediately after the last existing entry in the same
+ * tier; lower-priority tiers are pushed later in the queue.
  *
  * Crucially, existing entries are *never* reordered — this keeps slot
  * positions stable for the user.
@@ -87,14 +87,36 @@ let lastProcessedTick = -1;
 function findInsertIndex(queue: AlertEntry[], type: AlertType): number {
   if (type === "waveAround") return queue.length;
 
-  // Black flag: insert after the last existing black-flag entry.
-  let lastBfIndex = -1;
+  if (type === "meatball") {
+    let lastIndex = -1;
 
-  for (let i = 0; i < queue.length; i++) {
-    if (queue[i].type === "blackFlag") lastBfIndex = i;
+    for (let i = 0; i < queue.length; i++) {
+      if (queue[i].type === "disqualify" || queue[i].type === "blackFlag" || queue[i].type === "meatball") {
+        lastIndex = i;
+      }
+    }
+
+    return lastIndex + 1;
   }
 
-  return lastBfIndex + 1;
+  if (type === "blackFlag") {
+    let lastIndex = -1;
+
+    for (let i = 0; i < queue.length; i++) {
+      if (queue[i].type === "disqualify" || queue[i].type === "blackFlag") lastIndex = i;
+    }
+
+    return lastIndex + 1;
+  }
+
+  // Disqualify sits at the top priority tier.
+  let lastDqIndex = -1;
+
+  for (let i = 0; i < queue.length; i++) {
+    if (queue[i].type === "disqualify") lastDqIndex = i;
+  }
+
+  return lastDqIndex + 1;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -137,8 +159,16 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
   const activeKeys = new Set<string>();
 
   for (const car of rosterState.carList) {
+    if (hasDisqualifyFlag(car.carIdx, telemetry)) {
+      activeKeys.add(`disqualify:${car.carIdx}`);
+    }
+
     if (hasBlackFlag(car.carIdx, telemetry)) {
       activeKeys.add(`blackFlag:${car.carIdx}`);
+    }
+
+    if (hasMeatballFlag(car.carIdx, telemetry)) {
+      activeKeys.add(`meatball:${car.carIdx}`);
     }
 
     if (needsWaveAround(car.carIdx, telemetry)) {
@@ -211,8 +241,16 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
  *
  * @internal Exported for testing
  */
-export function getAlertForSlot(slotIndex: number, alertType: "any" | AlertType): RaceControlAlert | null {
-  const visible = alertType === "any" ? alertQueue : alertQueue.filter((e) => e.type === alertType);
+export function getAlertForSlot(
+  slotIndex: number,
+  alertType: "any" | "blackFlag" | "waveAround",
+): RaceControlAlert | null {
+  const visible =
+    alertType === "any"
+      ? alertQueue
+      : alertType === "blackFlag"
+        ? alertQueue.filter((e) => e.type !== "waveAround")
+        : alertQueue.filter((e) => e.type === "waveAround");
 
   return visible[slotIndex] ?? null;
 }

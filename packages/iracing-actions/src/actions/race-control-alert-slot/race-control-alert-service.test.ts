@@ -133,6 +133,30 @@ describe("updateAlertQueue — black flag detection", () => {
   });
 });
 
+describe("updateAlertQueue — disqualify detection", () => {
+  it("adds a disqualify entry when Disqualify is set", () => {
+    const session = mkSessionInfo([{ carIdx: 3, carNumber: "42" }]);
+
+    updateAlertQueue(session, mkTelemetry({ SessionTick: 1, CarIdxSessionFlags: [0, 0, 0, Flags.Disqualify] }));
+
+    const alert = getAlertForSlot(0, "any");
+    expect(alert?.type).toBe("disqualify");
+    expect(alert?.carNumber).toBe("42");
+  });
+
+  it("suppresses blackFlag entry when Disqualify and Black are both set", () => {
+    const session = mkSessionInfo([{ carIdx: 3, carNumber: "42" }]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({ SessionTick: 1, CarIdxSessionFlags: [0, 0, 0, Flags.Disqualify | Flags.Black] }),
+    );
+
+    expect(getAlertForSlot(0, "blackFlag")?.type).toBe("disqualify");
+    expect(getAlertForSlot(1, "blackFlag")).toBeNull();
+  });
+});
+
 describe("updateAlertQueue — wave-around detection", () => {
   it("adds a wave-around entry when conditions are met", () => {
     const session = mkSessionInfo([
@@ -156,11 +180,129 @@ describe("updateAlertQueue — wave-around detection", () => {
   });
 });
 
+describe("updateAlertQueue — meatball detection", () => {
+  it("adds a meatball entry when Repair is set", () => {
+    const session = mkSessionInfo([{ carIdx: 3, carNumber: "42" }]);
+
+    updateAlertQueue(session, mkTelemetry({ SessionTick: 1, CarIdxSessionFlags: [0, 0, 0, Flags.Repair] }));
+
+    const alert = getAlertForSlot(0, "blackFlag");
+    expect(alert?.type).toBe("meatball");
+    expect(alert?.carNumber).toBe("42");
+  });
+
+  it("does not add a meatball entry when only Servicible is set", () => {
+    const session = mkSessionInfo([{ carIdx: 3, carNumber: "42" }]);
+
+    updateAlertQueue(session, mkTelemetry({ SessionTick: 1, CarIdxSessionFlags: [0, 0, 0, Flags.Servicible] }));
+
+    const alert = getAlertForSlot(0, "blackFlag");
+    expect(alert).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Stable ordering
 // ---------------------------------------------------------------------------
 
 describe("stable insertion order", () => {
+  it("orders alerts as disqualify, black-flag, meatball, then wave-around", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" },
+      { carIdx: 1, carNumber: "22" },
+      { carIdx: 2, carNumber: "33" },
+      { carIdx: 3, carNumber: "44" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, Flags.Repair, 0, 0],
+        CarIdxLap: [6, 5, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0, 0.0],
+      }),
+    );
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 2,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, Flags.Repair, Flags.Black, 0],
+        CarIdxLap: [6, 5, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0, 0.0],
+      }),
+    );
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 3,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, Flags.Repair, Flags.Black, Flags.Disqualify],
+        CarIdxLap: [6, 5, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0, 0.0],
+      }),
+    );
+
+    const snapshot = getAlertQueueSnapshot();
+    const dqIdx = snapshot.findIndex((e) => e.type === "disqualify");
+    const bfIdx = snapshot.findIndex((e) => e.type === "blackFlag");
+    const mbIdx = snapshot.findIndex((e) => e.type === "meatball");
+    const waIdx = snapshot.findIndex((e) => e.type === "waveAround");
+
+    expect(dqIdx).toBeGreaterThanOrEqual(0);
+    expect(bfIdx).toBeGreaterThanOrEqual(0);
+    expect(mbIdx).toBeGreaterThanOrEqual(0);
+    expect(waIdx).toBeGreaterThanOrEqual(0);
+    expect(dqIdx).toBeLessThan(bfIdx);
+    expect(bfIdx).toBeLessThan(mbIdx);
+    expect(mbIdx).toBeLessThan(waIdx);
+  });
+
+  it("orders alerts as black-flag, meatball, then wave-around", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" },
+      { carIdx: 1, carNumber: "22" },
+      { carIdx: 2, carNumber: "33" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, Flags.Repair, 0],
+        CarIdxLap: [6, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0],
+      }),
+    );
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 2,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, Flags.Repair, Flags.Black],
+        CarIdxLap: [6, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0],
+      }),
+    );
+
+    const snapshot = getAlertQueueSnapshot();
+    const bfIdx = snapshot.findIndex((e) => e.type === "blackFlag");
+    const mbIdx = snapshot.findIndex((e) => e.type === "meatball");
+    const waIdx = snapshot.findIndex((e) => e.type === "waveAround");
+
+    expect(bfIdx).toBeGreaterThanOrEqual(0);
+    expect(mbIdx).toBeGreaterThanOrEqual(0);
+    expect(waIdx).toBeGreaterThanOrEqual(0);
+    expect(bfIdx).toBeLessThan(mbIdx);
+    expect(mbIdx).toBeLessThan(waIdx);
+  });
+
   it("inserts black flags before wave-arounds", () => {
     const session = mkSessionInfo([
       { carIdx: 0, carNumber: "01" },
@@ -346,31 +488,43 @@ describe("getAlertForSlot", () => {
     expect(slot0?.carIdx).not.toBe(slot1?.carIdx);
   });
 
-  it("filters by alert type", () => {
+  it("filters by grouped black-flag alert type", () => {
     const session = mkSessionInfo([
       { carIdx: 0, carNumber: "01" },
       { carIdx: 1, carNumber: "22" },
     ]);
 
-    // Car 0 = leader, car 1 = black flag + lap down
+    // Car 0 = leader, car 1 = black flag + meatball + lap down
     updateAlertQueue(
       session,
       mkTelemetry({
         SessionTick: 1,
         SessionFlags: Flags.Yellow,
-        CarIdxSessionFlags: [0, Flags.Black],
+        CarIdxSessionFlags: [0, Flags.Black | Flags.Repair],
         CarIdxLap: [6, 5],
         CarIdxLapDistPct: [0.0, 0.0],
       }),
     );
 
     const bfSlot = getAlertForSlot(0, "blackFlag");
+    const mbSlot = getAlertForSlot(1, "blackFlag");
     const waSlot = getAlertForSlot(0, "waveAround");
     expect(bfSlot?.type).toBe("blackFlag");
+    expect(mbSlot?.type).toBe("meatball");
     expect(waSlot?.type).toBe("waveAround");
 
-    // Slot 1 should be empty when filtering by type
-    expect(getAlertForSlot(1, "blackFlag")).toBeNull();
+    // No third grouped black-flag entry
+    expect(getAlertForSlot(2, "blackFlag")).toBeNull();
+  });
+
+  it("includes disqualify in grouped black-flag filter", () => {
+    const session = mkSessionInfo([{ carIdx: 1, carNumber: "22" }]);
+
+    updateAlertQueue(session, mkTelemetry({ SessionTick: 1, CarIdxSessionFlags: [0, Flags.Disqualify] }));
+
+    const dqSlot = getAlertForSlot(0, "blackFlag");
+    expect(dqSlot?.type).toBe("disqualify");
+    expect(getAlertForSlot(0, "waveAround")).toBeNull();
   });
 
   it("returns null for out-of-range slot index", () => {
