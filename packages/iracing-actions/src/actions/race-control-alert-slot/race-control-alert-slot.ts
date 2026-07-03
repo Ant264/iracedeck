@@ -21,7 +21,12 @@ import z from "zod";
 import { type RaceControlAttentionState } from "../shared/race-control-attention.js";
 import { applyReferenceCarSelection } from "../shared/reference-car-selection.js";
 import { generateSplitsDeltaCycleSvg } from "../splits-delta-cycle/splits-delta-cycle.js";
-import { getAlertForSlot, type RaceControlAlert, updateAlertQueue } from "./race-control-alert-service.js";
+import {
+  getAlertForSlot,
+  markWaveAroundCommandSent,
+  type RaceControlAlert,
+  updateAlertQueue,
+} from "./race-control-alert-service.js";
 
 const RaceControlAlertSlotSettings = CommonSettings.extend({
   /** 0-based queue slot index. */
@@ -58,7 +63,9 @@ export function generateRaceControlAlertSlotSvg(
         : alert?.type === "meatball"
           ? "meatball"
           : alert?.type === "waveAround"
-            ? "waveAround"
+            ? alert.waveCommandSent
+              ? "waveAround"
+              : "waveAroundPending"
             : "none";
 
   return generateSplitsDeltaCycleSvg(
@@ -217,9 +224,20 @@ export class RaceControlAlertSlot extends ConnectionStateAwareAction<RaceControl
     const success = await getCommands().chat.sendMessage(command);
 
     if (success) {
+      if (alert.type === "waveAround") {
+        markWaveAroundCommandSent(alert.key);
+        this.refreshActiveDisplays();
+      }
+
       this.logger.info("Instant alert command sent");
     } else {
       this.logger.warn("Failed to send instant alert command");
+    }
+  }
+
+  private refreshActiveDisplays(): void {
+    for (const [contextId, settings] of this.activeContexts) {
+      void this.updateDisplay(contextId, settings);
     }
   }
 

@@ -11,7 +11,13 @@ import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
  *
  * @internal Exported for testing
  */
-export type RaceControlAttentionState = "none" | "disqualify" | "blackFlag" | "meatball" | "waveAround";
+export type RaceControlAttentionState =
+  | "none"
+  | "disqualify"
+  | "blackFlag"
+  | "meatball"
+  | "waveAround"
+  | "waveAroundPending";
 
 /**
  * Returns `true` when the car at `carIdx` has an active disqualify flag set
@@ -219,6 +225,8 @@ const BLACK_FLAG_COLOR = "#1a1a1a";
 const MEATBALL_COLOR = "#e67e22";
 /** Blue colour used for wave-around attention borders. */
 const WAVE_AROUND_COLOR = "#3498db";
+/** Darker blue used for wave-around alerts before the wave-by command is sent. */
+const WAVE_AROUND_PENDING_COLOR = "#123f6b";
 /** Inset for the inner attention fill so the normal border remains visible. */
 const ATTENTION_FILL_INSET = 10;
 /** Corner radius for the inner attention fill. */
@@ -248,5 +256,7 @@ export function getAttentionBorderSvg(state: RaceControlAttentionState): string 
       return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${BLACK_FLAG_COLOR}"/><circle cx="72" cy="72" r="20" fill="${MEATBALL_COLOR}"/>`;
     case "waveAround":
       return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${WAVE_AROUND_COLOR}"/>`;
+    case "waveAroundPending":
+      return `<rect x="${ATTENTION_FILL_INSET}" y="${ATTENTION_FILL_INSET}" width="${ATTENTION_FILL_SIZE}" height="${ATTENTION_FILL_SIZE}" rx="${ATTENTION_FILL_RX}" fill="${WAVE_AROUND_PENDING_COLOR}"/>`;
   }
 }

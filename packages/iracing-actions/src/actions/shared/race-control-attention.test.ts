@@ -349,6 +349,12 @@ describe("getAttentionBorderSvg", () => {
     expect(svg).toContain("<rect");
   });
 
+  it("renders a darker blue interior fill for pending wave-around", () => {
+    const svg = getAttentionBorderSvg("waveAroundPending");
+    expect(svg).toContain('fill="#123f6b"');
+    expect(svg).toContain("<rect");
+  });
+
   it("renders a black interior fill for black flag", () => {
     const svg = getAttentionBorderSvg("blackFlag");
     expect(svg).toContain('fill="#1a1a1a"');

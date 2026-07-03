@@ -42,6 +42,10 @@ export interface RaceControlAlert {
   readonly car: ActiveSessionCar;
   /** Millisecond timestamp from `Date.now()` when the alert was first detected. */
   readonly detectedAt: number;
+  /** 1-based leaderboard position (`CarIdxPosition`) when known. */
+  readonly leaderboardPosition?: number;
+  /** `true` after a wave-by command has been sent for this wave-around alert. */
+  readonly waveCommandSent?: boolean;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -58,7 +62,11 @@ const GRACE_PERIOD_MS = 2000;
 /**
  * Internal alert entry (superset of the public {@link RaceControlAlert}).
  */
-interface AlertEntry extends RaceControlAlert {
+interface AlertEntry extends Omit<RaceControlAlert, "leaderboardPosition" | "waveCommandSent"> {
+  /** 1-based leaderboard position (`CarIdxPosition`) when known. */
+  leaderboardPosition?: number;
+  /** `true` after a wave-by command has been sent for this wave-around alert. */
+  waveCommandSent?: boolean;
   /**
    * Wall-clock ms when the condition was last observed as cleared.
    * `undefined` = condition is currently active.
@@ -72,6 +80,29 @@ let alertQueue: AlertEntry[] = [];
 let rosterState: SessionRosterState = { carList: [], knownSet: new Set(), lastKey: null };
 /** Last `SessionTick` value seen — used to skip redundant per-car scans. */
 let lastProcessedTick = -1;
+/** Keys of wave-around alerts that have already sent a wave-by command. */
+let sentWaveAroundKeys = new Set<string>();
+
+function getLeaderboardPosition(carIdx: number, telemetry: TelemetryData | null): number | undefined {
+  const positions = telemetry?.CarIdxPosition;
+
+  if (!positions || carIdx < 0 || carIdx >= positions.length) return undefined;
+
+  const position = positions[carIdx];
+
+  return Number.isFinite(position) && position > 0 ? position : undefined;
+}
+
+function sortWaveAroundByLeaderboardPosition(a: AlertEntry, b: AlertEntry): number {
+  const aPos = a.leaderboardPosition ?? Number.MAX_SAFE_INTEGER;
+  const bPos = b.leaderboardPosition ?? Number.MAX_SAFE_INTEGER;
+
+  if (aPos !== bPos) return aPos - bPos;
+
+  if (a.carNumberRaw !== b.carNumberRaw) return a.carNumberRaw - b.carNumberRaw;
+
+  return a.carIdx - b.carIdx;
+}
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -178,6 +209,11 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
 
   // 4. Re-activate entries whose condition has returned within the grace window
   for (const entry of alertQueue) {
+    if (entry.type === "waveAround") {
+      entry.leaderboardPosition = getLeaderboardPosition(entry.carIdx, telemetry);
+      entry.waveCommandSent = sentWaveAroundKeys.has(entry.key);
+    }
+
     if (entry.clearingAt !== undefined && activeKeys.has(entry.key)) {
       entry.clearingAt = undefined; // condition came back — cancel removal
     }
@@ -196,6 +232,14 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
 
     return now - e.clearingAt < GRACE_PERIOD_MS;
   });
+
+  const queueKeys = new Set(alertQueue.map((e) => e.key));
+
+  for (const key of [...sentWaveAroundKeys]) {
+    if (!queueKeys.has(key)) {
+      sentWaveAroundKeys.delete(key);
+    }
+  }
 
   // 7. Insert newly detected alerts that are not already in the queue
   const existingKeys = new Set(alertQueue.map((e) => e.key));
@@ -219,6 +263,8 @@ export function updateAlertQueue(sessionInfo: unknown, telemetry: TelemetryData 
       driverName: car.driverName ?? "",
       car,
       detectedAt: now,
+      leaderboardPosition: typeStr === "waveAround" ? getLeaderboardPosition(carIdxNum, telemetry) : undefined,
+      waveCommandSent: typeStr === "waveAround" ? sentWaveAroundKeys.has(key) : undefined,
     };
 
     const idx = findInsertIndex(alertQueue, typeStr);
@@ -245,14 +291,43 @@ export function getAlertForSlot(
   slotIndex: number,
   alertType: "any" | "blackFlag" | "waveAround",
 ): RaceControlAlert | null {
-  const visible =
-    alertType === "any"
-      ? alertQueue
-      : alertType === "blackFlag"
-        ? alertQueue.filter((e) => e.type !== "waveAround")
-        : alertQueue.filter((e) => e.type === "waveAround");
+  const visible = (() => {
+    if (alertType === "blackFlag") {
+      return alertQueue.filter((e) => e.type !== "waveAround");
+    }
+
+    const waveAroundSorted = alertQueue
+      .filter((e) => e.type === "waveAround")
+      .sort(sortWaveAroundByLeaderboardPosition);
+
+    if (alertType === "waveAround") {
+      return waveAroundSorted;
+    }
+
+    const nonWave = alertQueue.filter((e) => e.type !== "waveAround");
+
+    return [...nonWave, ...waveAroundSorted];
+  })();
 
   return visible[slotIndex] ?? null;
+}
+
+/**
+ * Mark a wave-around alert as command-sent so its highlight can switch from
+ * the pending (darker) state to the sent (lighter) state.
+ *
+ * @internal Exported for testing
+ */
+export function markWaveAroundCommandSent(alertKey: string): void {
+  if (!alertKey.startsWith("waveAround:")) return;
+
+  sentWaveAroundKeys.add(alertKey);
+
+  const entry = alertQueue.find((e) => e.key === alertKey && e.type === "waveAround");
+
+  if (!entry) return;
+
+  entry.waveCommandSent = true;
 }
 
 /**
@@ -274,4 +349,5 @@ export function resetAlertService(): void {
   alertQueue = [];
   rosterState = { carList: [], knownSet: new Set(), lastKey: null };
   lastProcessedTick = -1;
+  sentWaveAroundKeys = new Set<string>();
 }

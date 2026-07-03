@@ -11,12 +11,14 @@ import {
 const {
   mockSendMessage,
   mockGetAlertForSlot,
+  mockMarkWaveAroundCommandSent,
   mockUpdateAlertQueue,
   mockApplyReferenceCarSelection,
   mockGenerateSplitsDeltaCycleSvg,
 } = vi.hoisted(() => ({
   mockSendMessage: vi.fn().mockResolvedValue(true),
   mockGetAlertForSlot: vi.fn(),
+  mockMarkWaveAroundCommandSent: vi.fn(),
   mockUpdateAlertQueue: vi.fn(),
   mockApplyReferenceCarSelection: vi.fn(),
   mockGenerateSplitsDeltaCycleSvg: vi.fn(() => "data:image/svg+xml,mock"),
@@ -78,6 +80,7 @@ vi.mock("../shared/reference-car-selection.js", () => ({
 
 vi.mock("./race-control-alert-service.js", () => ({
   getAlertForSlot: mockGetAlertForSlot,
+  markWaveAroundCommandSent: mockMarkWaveAroundCommandSent,
   updateAlertQueue: mockUpdateAlertQueue,
 }));
 
@@ -125,6 +128,7 @@ beforeEach(() => {
   mockSendMessage.mockClear();
   mockGetAlertForSlot.mockReset();
   mockGetAlertForSlot.mockReturnValue(null);
+  mockMarkWaveAroundCommandSent.mockClear();
   mockUpdateAlertQueue.mockClear();
   mockApplyReferenceCarSelection.mockReset();
   mockApplyReferenceCarSelection.mockReturnValue("selected");
@@ -194,8 +198,19 @@ describe("generateRaceControlAlertSlotSvg", () => {
     expect(args?.[6]).toBe("disqualify");
   });
 
-  it("uses the same blue highlight state as select-reference-car for wave-around", () => {
+  it("uses the darker pending highlight state for unsent wave-around", () => {
     generateRaceControlAlertSlotSvg(baseSettings, makeAlert({ key: "waveAround:5", type: "waveAround" }), false);
+
+    const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
+    expect(args?.[6]).toBe("waveAroundPending");
+  });
+
+  it("uses the existing lighter highlight state after wave-around command is sent", () => {
+    generateRaceControlAlertSlotSvg(
+      baseSettings,
+      makeAlert({ key: "waveAround:5", type: "waveAround", waveCommandSent: true }),
+      false,
+    );
 
     const args = mockGenerateSplitsDeltaCycleSvg.mock.calls.at(-1);
     expect(args?.[6]).toBe("waveAround");
@@ -245,6 +260,7 @@ describe("RaceControlAlertSlot onKeyDown", () => {
     await action.onKeyDown(makeKeyDownEvent({ slotIndex: 0, alertType: "any", actionMode: "instant" }));
 
     expect(mockSendMessage).toHaveBeenCalledWith("!waveby #88");
+    expect(mockMarkWaveAroundCommandSent).toHaveBeenCalledWith("waveAround:5");
     expect(mockApplyReferenceCarSelection).not.toHaveBeenCalled();
   });
 
@@ -256,6 +272,7 @@ describe("RaceControlAlertSlot onKeyDown", () => {
     await action.onKeyDown(makeKeyDownEvent({ slotIndex: 0, alertType: "any", actionMode: "instant" }));
 
     expect(mockSendMessage).toHaveBeenCalledWith("!clear #15");
+    expect(mockMarkWaveAroundCommandSent).not.toHaveBeenCalled();
     expect(mockApplyReferenceCarSelection).not.toHaveBeenCalled();
   });
 

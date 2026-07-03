@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getAlertForSlot,
   getAlertQueueSnapshot,
+  markWaveAroundCommandSent,
   resetAlertService,
   updateAlertQueue,
 } from "./race-control-alert-service.js";
@@ -177,6 +178,29 @@ describe("updateAlertQueue — wave-around detection", () => {
     const waveEntry = snapshot.find((e) => e.type === "waveAround");
     expect(waveEntry).toBeDefined();
     expect(waveEntry?.carIdx).toBe(1);
+  });
+
+  it("orders wave-around slots by leaderboard position", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" }, // leader
+      { carIdx: 1, carNumber: "77" },
+      { carIdx: 2, carNumber: "88" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, 0, 0],
+        CarIdxLap: [6, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0],
+        CarIdxPosition: [1, 3, 2],
+      }),
+    );
+
+    expect(getAlertForSlot(0, "waveAround")?.carIdx).toBe(2);
+    expect(getAlertForSlot(1, "waveAround")?.carIdx).toBe(1);
   });
 });
 
@@ -533,5 +557,58 @@ describe("getAlertForSlot", () => {
     updateAlertQueue(session, mkTelemetry({ SessionTick: 1, CarIdxSessionFlags: [0, 0, 0, Flags.Black] }));
 
     expect(getAlertForSlot(5, "any")).toBeNull();
+  });
+
+  it("keeps non-wave tiers first and sorts wave-around entries by leaderboard position in any mode", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" }, // leader
+      { carIdx: 1, carNumber: "22" },
+      { carIdx: 2, carNumber: "33" },
+      { carIdx: 3, carNumber: "44" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, Flags.Black, 0, 0],
+        CarIdxLap: [6, 5, 5, 5],
+        CarIdxLapDistPct: [0.0, 0.0, 0.0, 0.0],
+        CarIdxPosition: [1, 4, 3, 2],
+      }),
+    );
+
+    expect(getAlertForSlot(0, "any")?.type).toBe("blackFlag");
+    expect(getAlertForSlot(1, "any")?.type).toBe("waveAround");
+    expect(getAlertForSlot(1, "any")?.carIdx).toBe(3);
+    expect(getAlertForSlot(2, "any")?.carIdx).toBe(2);
+    expect(getAlertForSlot(3, "any")?.carIdx).toBe(1);
+  });
+
+  it("marks wave-around alerts as command-sent", () => {
+    const session = mkSessionInfo([
+      { carIdx: 0, carNumber: "01" },
+      { carIdx: 1, carNumber: "22" },
+    ]);
+
+    updateAlertQueue(
+      session,
+      mkTelemetry({
+        SessionTick: 1,
+        SessionFlags: Flags.Yellow,
+        CarIdxSessionFlags: [0, 0],
+        CarIdxLap: [6, 5],
+        CarIdxLapDistPct: [0.0, 0.0],
+        CarIdxPosition: [1, 2],
+      }),
+    );
+
+    const alert = getAlertForSlot(0, "waveAround");
+    expect(alert?.waveCommandSent).not.toBe(true);
+
+    markWaveAroundCommandSent(alert?.key ?? "");
+
+    expect(getAlertForSlot(0, "waveAround")?.waveCommandSent).toBe(true);
   });
 });
